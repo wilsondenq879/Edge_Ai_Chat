@@ -143,6 +143,8 @@ const OPTION_I18N = {
     settingsThemeLight: "淺色",
     taskExtractionWindowDaysLabel: "待辦自動抓取區間",
     taskExtractionWindowDaysHint: "待辦抓取會根據目前可見的聊天內容整理，預設優先近 3 天，最多可調到 7 天。",
+    floatingIconEnabledLabel: "顯示浮動 icon",
+    floatingIconEnabledHint: "在網頁上顯示 Open Copilot 的浮動啟動 icon。關閉後仍可從其他入口開啟面板。",
     starterHoverTipsEnabledLabel: "顯示 Starter 懸停提示",
     starterHoverTipsEnabledHint: "滑過聊天面板中的 starter 時，顯示這個 starter 會做什麼的簡短說明。",
     teamsInlineActionEnabledLabel: "顯示 Teams 的 Send to Open Copilot 按鈕",
@@ -386,6 +388,8 @@ const OPTION_I18N = {
     settingsThemeLight: "Light",
     taskExtractionWindowDaysLabel: "Task Auto Extraction Window",
     taskExtractionWindowDaysHint: "Task extraction uses visible chat content and prioritizes the last 3 days by default. You can increase the window up to 7 days.",
+    floatingIconEnabledLabel: "Show floating icon",
+    floatingIconEnabledHint: "Show the floating Open Copilot launcher on web pages. When off, the panel can still open from other entry points.",
     starterHoverTipsEnabledLabel: "Show starter hover tips",
     starterHoverTipsEnabledHint: "Show a short description of what the starter does when you hover over it in the chat panel.",
     teamsInlineActionEnabledLabel: "Show Teams Send to Open Copilot button",
@@ -3413,6 +3417,8 @@ function applyTranslations() {
   document.getElementById("settingsThemeToolbarLightOption").textContent = t("settingsThemeLight");
   document.getElementById("taskExtractionWindowDaysLabel").textContent = t("taskExtractionWindowDaysLabel");
   document.getElementById("taskExtractionWindowDaysHint").textContent = t("taskExtractionWindowDaysHint");
+  document.getElementById("floatingIconEnabledLabel").textContent = t("floatingIconEnabledLabel");
+  document.getElementById("floatingIconEnabledHint").textContent = t("floatingIconEnabledHint");
   document.getElementById("starterHoverTipsEnabledLabel").textContent = t("starterHoverTipsEnabledLabel");
   document.getElementById("starterHoverTipsEnabledHint").textContent = t("starterHoverTipsEnabledHint");
   document.getElementById("teamsInlineActionEnabledLabel").textContent = t("teamsInlineActionEnabledLabel");
@@ -5341,6 +5347,7 @@ async function loadConfig() {
     document.getElementById("replyLanguage").value = replyLanguage;
     document.getElementById("settingsThemeToolbar").value = settingsTheme;
     document.getElementById("taskExtractionWindowDays").value = String(normalizeTaskExtractionWindowDays(result.config.taskExtractionWindowDays));
+    document.getElementById("floatingIconEnabled").checked = result.config.floatingIconEnabled !== false;
     document.getElementById("starterHoverTipsEnabled").checked = result.config.starterHoverTipsEnabled !== false;
     document.getElementById("teamsInlineActionEnabled").checked = result.config.teamsInlineActionEnabled !== false;
     document.getElementById("systemPrompt").value = localizeDefaultText(
@@ -5435,6 +5442,7 @@ async function saveConfig() {
   const replyLanguage = document.getElementById("replyLanguage").value;
   const settingsTheme = normalizeSettingsTheme(document.getElementById("settingsThemeToolbar").value);
   const taskExtractionWindowDays = normalizeTaskExtractionWindowDays(document.getElementById("taskExtractionWindowDays").value);
+  const floatingIconEnabled = document.getElementById("floatingIconEnabled").checked;
   const starterHoverTipsEnabled = document.getElementById("starterHoverTipsEnabled").checked;
   const teamsInlineActionEnabled = document.getElementById("teamsInlineActionEnabled").checked;
   const starterSortMode = normalizeStarterSortMode(document.getElementById("starterLibrarySortMode")?.value);
@@ -5495,6 +5503,7 @@ async function saveConfig() {
       replyLanguage,
       settingsTheme,
       taskExtractionWindowDays,
+      floatingIconEnabled,
       starterHoverTipsEnabled,
       teamsInlineActionEnabled,
       starterSortMode,

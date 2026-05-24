@@ -38,6 +38,7 @@ type Config = {
   replyLanguage: string;
   settingsTheme: "system" | "dark" | "light";
   taskExtractionWindowDays: number;
+  floatingIconEnabled: boolean;
   starterHoverTipsEnabled: boolean;
   teamsInlineActionEnabled: boolean;
   telegramNotificationEnabled: boolean;

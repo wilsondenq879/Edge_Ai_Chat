@@ -14993,6 +14993,7 @@ function renderShell() {
   const visibleStarterEntries = isPanelMaximized
     ? activeStarterEntries
     : activeStarterEntries.filter((starter) => !starter.isAgentFlowBuilder);
+  const floatingIconEnabled = currentConfig?.floatingIconEnabled !== false;
   const starterHoverTipsEnabled = currentConfig?.starterHoverTipsEnabled !== false;
   const teamsInlineActionEnabled = currentConfig?.teamsInlineActionEnabled !== false;
   const pageContextControlLabel = hasConversationStarted() ? tl("contextLabelAfter") : tl("contextLabelBefore");
@@ -15016,9 +15017,9 @@ function renderShell() {
 
   host.innerHTML = `
     <div class="ollama-quick-shell">
-      <button class="ollama-quick-launcher" type="button" data-action="toggle-panel" aria-label="${escapeHtml(tl("openQuickChat"))}" title="${escapeHtml(tl("openQuickChat"))}">
+      ${floatingIconEnabled ? `<button class="ollama-quick-launcher" type="button" data-action="toggle-panel" aria-label="${escapeHtml(tl("openQuickChat"))}" title="${escapeHtml(tl("openQuickChat"))}">
         <span class="ollama-quick-launcher-core"></span>
-      </button>
+      </button>` : ""}
       <section class="ollama-quick-panel ${isPanelOpen ? "is-open" : ""} ${isPanelMaximized ? "is-maximized" : ""} ${showDetachedTaskRail ? "has-task-rail" : ""}" data-role="panel">
       <header class="ollama-quick-header">
         <div class="ollama-quick-header-main">
@@ -19457,6 +19458,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     changes.starterPinnedIds ||
     changes.starterManualOrder ||
     changes.starterLastUsedAt ||
+    changes.floatingIconEnabled ||
     changes.starterHoverTipsEnabled ||
     changes.teamsInlineActionEnabled
   ) {
