@@ -5523,6 +5523,26 @@ async function saveConfig() {
   setStatus(t("saveSuccess"));
 }
 
+async function saveBooleanPreference(inputId, configKey) {
+  const input = document.getElementById(inputId);
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const nextValue = input.checked;
+  const saved = await sendMessage({
+    type: "ollama:set-config",
+    config: { [configKey]: nextValue },
+  });
+
+  if (!saved?.ok) {
+    input.checked = !nextValue;
+    throw new Error(saved?.error || t("saveFailed"));
+  }
+
+  setStatus(t("saveSuccess"));
+}
+
 async function refreshModels() {
   setStatus(t("loadingModels"));
   const result = await sendMessage({ type: "ollama:list-models" });
@@ -5572,6 +5592,20 @@ document.getElementById("saveButton").addEventListener("click", async () => {
     setSaveButtonState("idle");
     setStatus(error instanceof Error ? error.message : String(error), true);
   }
+});
+
+[
+  ["floatingIconEnabled", "floatingIconEnabled"],
+  ["starterHoverTipsEnabled", "starterHoverTipsEnabled"],
+  ["teamsInlineActionEnabled", "teamsInlineActionEnabled"],
+].forEach(([inputId, configKey]) => {
+  document.getElementById(inputId)?.addEventListener("change", async () => {
+    try {
+      await saveBooleanPreference(inputId, configKey);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), true);
+    }
+  });
 });
 
 document.getElementById("settingsThemeToolbar").addEventListener("change", (event) => {
