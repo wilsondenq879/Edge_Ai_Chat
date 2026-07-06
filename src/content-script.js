@@ -20,7 +20,14 @@ const OFFICE_SCREENSHOT_FALLBACK_TEXT_THRESHOLD = 500;
 const OFFICE_SCREENSHOT_FALLBACK_SELECTION_THRESHOLD = 160;
 const TASK_REMINDER_LEAD_TIME_MS = 30 * 60 * 1000;
 const TASK_RAIL_MIN_VIEWPORT_WIDTH_PX = 1100;
+const SPLIT_PANE_DEFAULT_WIDTH_PX = 430;
+const SPLIT_PANE_MIN_WIDTH_PX = 360;
+const SPLIT_PANE_MAX_WIDTH_PX = 760;
+const SPLIT_PAGE_MIN_WIDTH_PX = 520;
+const SPLIT_LAYOUT_MIN_VIEWPORT_WIDTH_PX = 900;
 const LAUNCHER_POSITION_KEY = "ollamaLauncherPosition";
+const PANEL_VIEW_MODE_KEY = "ollamaPanelViewMode";
+const SPLIT_PANE_WIDTH_KEY = "ollamaSplitPaneWidth";
 const LAUNCHER_DRAG_THRESHOLD_PX = 6;
 const LAUNCHER_VIEWPORT_MARGIN_PX = 12;
 const LAUNCHER_DEFAULT_RIGHT_OFFSET_PX = 14;
@@ -275,10 +282,26 @@ let isDragActive = false;
 let pendingMessageRenderFrame = 0;
 let pendingSessionSaveTimer = 0;
 let starterSearch = "";
+let slashStarterMenuOpen = false;
+let slashStarterQuery = "";
+let slashStarterActiveIndex = 0;
 const STARTER_SORT_MODES = ["recommended", "recently-used", "a-z", "manual"];
+const PANEL_VIEW_MODES = ["compact", "split", "large"];
+const LARGE_VIEW_STARTER_KEYS = new Set([
+  "landingPageBuilder",
+  "landingHtml",
+  "landingPowerPoint",
+  "batchUrlQaWorkflow",
+  "createAgentFlow",
+  "createCustomStarter",
+  "multiPerspective",
+]);
 let highlightedStarterId = "";
 let isPanelOpen = false;
 let isPanelMaximized = false;
+let panelViewMode = "split";
+let splitPaneWidth = SPLIT_PANE_DEFAULT_WIDTH_PX;
+let splitPaneResizeState = null;
 let launcherPosition = null;
 let launcherDragState = null;
 let suppressLauncherToggle = false;
@@ -1042,6 +1065,27 @@ const CONTENT_I18N = {
     collapse: "收合",
     maximize: "最大化",
     restore: "還原視窗",
+    viewModeCompact: "小窗",
+    viewModeSplit: "分割",
+    viewModeLarge: "大型",
+    viewModeCompactTitle: "切換為浮動小窗",
+    viewModeSplitTitle: "切換為右側分割視窗",
+    viewModeLargeTitle: "切換為大型工作台",
+    splitResizeHandle: "拖拉調整分割視窗寬度",
+    browserPaneLabel: "瀏覽器側欄",
+    currentPageLabel: "目前頁面",
+    browserContextFallbackTitle: "這個頁面",
+    browserContextFallbackHost: "目前網站",
+    browserContextPageType: "{type} · {adapter}",
+    browserContextModel: "模型：{model}",
+    browserContextTabs: "分頁",
+    browserContextDocs: "文件",
+    browserContextAdd: "加入 context",
+    browserContextAddTabs: "+ 分頁",
+    browserContextAddDocs: "+ 文件",
+    browserActionsLabel: "建議動作",
+    browserActionsTitle: "Take actions with {type}",
+    browserActionsSubtitle: "我會使用目前頁面 context 來開始。",
     showTaskRail: "顯示任務匣",
     hideTaskRail: "收合任務匣",
     refreshModels: "重新整理模型",
@@ -1127,6 +1171,12 @@ const CONTENT_I18N = {
     removedAttachment: "已移除附件。",
     confirmRemoveAttachment: "確定要移除這個附件嗎？",
     starterReady: "已填入範本：{starter}",
+    slashStarterMenuLabel: "Starter 指令",
+    slashStarterMenuHint: "輸入 / 搜尋 starter skill",
+    slashStarterEmpty: "沒有符合的 starter skill",
+    slashStarterCustomBadge: "自訂",
+    slashStarterFlowBadge: "Flow",
+    slashStarterBuilderBadge: "建立",
     starterReasoningModelReady: "這個 starter 會優先使用更思考的模型：{model}。你也可以改成快速回答。",
     starterReasoningModelHint: "{starter} 預設會用 {model} 做較深入的分析。",
     starterReasoningModelAction: "使用更思考模型",
@@ -1694,6 +1744,27 @@ const CONTENT_I18N = {
     collapse: "Collapse",
     maximize: "Maximize",
     restore: "Restore window",
+    viewModeCompact: "Mini",
+    viewModeSplit: "Split",
+    viewModeLarge: "Large",
+    viewModeCompactTitle: "Switch to compact floating view",
+    viewModeSplitTitle: "Switch to docked split view",
+    viewModeLargeTitle: "Switch to large workspace view",
+    splitResizeHandle: "Drag to resize split pane",
+    browserPaneLabel: "Browser side pane",
+    currentPageLabel: "Current page",
+    browserContextFallbackTitle: "This page",
+    browserContextFallbackHost: "Current site",
+    browserContextPageType: "{type} · {adapter}",
+    browserContextModel: "Model: {model}",
+    browserContextTabs: "Tabs",
+    browserContextDocs: "Docs",
+    browserContextAdd: "Add context",
+    browserContextAddTabs: "+ Tabs",
+    browserContextAddDocs: "+ Docs",
+    browserActionsLabel: "Suggested actions",
+    browserActionsTitle: "Take actions with {type}",
+    browserActionsSubtitle: "I'll use the current page as context.",
     showTaskRail: "Show task rail",
     hideTaskRail: "Hide task rail",
     refreshModels: "Refresh models",
@@ -1779,6 +1850,12 @@ const CONTENT_I18N = {
     removedAttachment: "Removed attachment.",
     confirmRemoveAttachment: "Remove this attachment?",
     starterReady: "Starter ready: {starter}",
+    slashStarterMenuLabel: "Starter commands",
+    slashStarterMenuHint: "Type / to search starter skills",
+    slashStarterEmpty: "No matching starter skills",
+    slashStarterCustomBadge: "Custom",
+    slashStarterFlowBadge: "Flow",
+    slashStarterBuilderBadge: "Builder",
     starterTools: "Starters",
     pageCopilot: "Page Copilot",
     siteAdapter: "Site Adapter",
@@ -5946,7 +6023,11 @@ function getSortedStarterEntries(entries, sortMode = getStarterSortMode()) {
 
 function getFilteredActiveStarterEntries(pageCopilot = currentPageCopilot) {
   const entries = getActiveStarterEntries(pageCopilot).filter((starter) => starter.showInPopup !== false);
-  const query = normalizeStarterSearchText(starterSearch);
+  return filterStarterEntriesByQuery(entries, starterSearch);
+}
+
+function filterStarterEntriesByQuery(entries, queryValue = "") {
+  const query = normalizeStarterSearchText(queryValue);
   if (!query) {
     return getSortedStarterEntries(entries);
   }
@@ -8187,6 +8268,29 @@ function getStarterOutputArtifactType(starter) {
   return "";
 }
 
+function starterPrefersLargeView(starter) {
+  if (!starter) {
+    return false;
+  }
+  const starterKey = String(starter.starterKey || starter.id || "").trim().replace(/^builtin:/, "");
+  return Boolean(
+    getStarterOutputArtifactType(starter)
+      || LARGE_VIEW_STARTER_KEYS.has(starterKey)
+      || starter.isLandingPageBuilder
+      || starter.isBatchUrlQaBuilder
+      || starter.isCustomStarterBuilder
+      || starter.isAgentFlowBuilder
+      || starter.isAgentFlow
+  );
+}
+
+function openLargeViewForStarterIfNeeded(starter) {
+  if (!starterPrefersLargeView(starter) || getPanelViewMode() === "large") {
+    return;
+  }
+  setPanelViewMode("large", { open: true });
+}
+
 function isHtmlOutputStarter(starter) {
   return getStarterOutputArtifactType(starter) === "html";
 }
@@ -9835,6 +9939,39 @@ function resolveSettingsTheme(value) {
   return normalized;
 }
 
+function normalizePanelViewMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return PANEL_VIEW_MODES.includes(normalized) ? normalized : "split";
+}
+
+function getPanelViewMode() {
+  return isPanelMaximized ? "large" : normalizePanelViewMode(panelViewMode);
+}
+
+function setPanelViewMode(nextMode, options = {}) {
+  const mode = normalizePanelViewMode(nextMode);
+  const wasLarge = isPanelMaximized;
+  panelViewMode = mode;
+  isPanelMaximized = mode === "large";
+
+  if (isPanelMaximized && !wasLarge && window.innerWidth >= TASK_RAIL_MIN_VIEWPORT_WIDTH_PX) {
+    isTaskRailCollapsed = true;
+  }
+
+  if (!isPanelMaximized) {
+    taskInboxExpanded = false;
+    starterSearch = "";
+  }
+
+  if (options.open !== false) {
+    isPanelOpen = true;
+  }
+
+  if (options.persist !== false) {
+    savePanelViewMode().catch(() => {});
+  }
+}
+
 function applyShellTheme(host = ensureHost()) {
   const preference = normalizeSettingsTheme(currentConfig?.settingsTheme);
   host.dataset.themePreference = preference;
@@ -9873,6 +10010,75 @@ async function saveLauncherPosition() {
     await chrome.storage.local.set({ [LAUNCHER_POSITION_KEY]: launcherPosition });
   } catch (_error) {
     // Ignore storage failures and keep the current in-memory position.
+  }
+}
+
+async function loadPanelViewMode() {
+  try {
+    const result = await chrome.storage.local.get(PANEL_VIEW_MODE_KEY);
+    const savedMode = normalizePanelViewMode(result?.[PANEL_VIEW_MODE_KEY]);
+    if (savedMode === "large" && window.innerWidth < TASK_RAIL_MIN_VIEWPORT_WIDTH_PX) {
+      panelViewMode = "split";
+      isPanelMaximized = false;
+      return;
+    }
+    panelViewMode = savedMode;
+    isPanelMaximized = savedMode === "large";
+  } catch (_error) {
+    panelViewMode = "split";
+    isPanelMaximized = false;
+  }
+}
+
+async function savePanelViewMode() {
+  try {
+    await chrome.storage.local.set({ [PANEL_VIEW_MODE_KEY]: getPanelViewMode() });
+  } catch (_error) {
+    // Ignore storage failures and keep the current in-memory view mode.
+  }
+}
+
+function normalizeSplitPaneWidth(value, viewportWidth = window.innerWidth) {
+  const viewport = Number.isFinite(Number(viewportWidth)) && Number(viewportWidth) > 0
+    ? Number(viewportWidth)
+    : SPLIT_LAYOUT_MIN_VIEWPORT_WIDTH_PX;
+  const maxByViewport = Math.max(SPLIT_PANE_MIN_WIDTH_PX, viewport - SPLIT_PAGE_MIN_WIDTH_PX);
+  const maxWidth = Math.min(SPLIT_PANE_MAX_WIDTH_PX, maxByViewport);
+  const minWidth = Math.min(SPLIT_PANE_MIN_WIDTH_PX, maxWidth);
+  const width = Number(value);
+  const fallback = Math.min(Math.max(SPLIT_PANE_DEFAULT_WIDTH_PX, minWidth), maxWidth);
+  if (!Number.isFinite(width)) {
+    return Math.round(fallback);
+  }
+  return Math.round(Math.min(Math.max(width, minWidth), maxWidth));
+}
+
+function sanitizeSplitPaneWidthPreference(value) {
+  const width = Number(value);
+  if (!Number.isFinite(width)) {
+    return SPLIT_PANE_DEFAULT_WIDTH_PX;
+  }
+  return Math.round(Math.min(Math.max(width, SPLIT_PANE_MIN_WIDTH_PX), SPLIT_PANE_MAX_WIDTH_PX));
+}
+
+function getResolvedSplitPaneWidth() {
+  return normalizeSplitPaneWidth(splitPaneWidth);
+}
+
+async function loadSplitPaneWidth() {
+  try {
+    const result = await chrome.storage.local.get(SPLIT_PANE_WIDTH_KEY);
+    splitPaneWidth = sanitizeSplitPaneWidthPreference(result?.[SPLIT_PANE_WIDTH_KEY]);
+  } catch (_error) {
+    splitPaneWidth = SPLIT_PANE_DEFAULT_WIDTH_PX;
+  }
+}
+
+async function saveSplitPaneWidth() {
+  try {
+    await chrome.storage.local.set({ [SPLIT_PANE_WIDTH_KEY]: sanitizeSplitPaneWidthPreference(splitPaneWidth) });
+  } catch (_error) {
+    // Ignore storage failures and keep the current in-memory split width.
   }
 }
 
@@ -9940,9 +10146,36 @@ function syncHostScale(host = ensureHost()) {
   host.style.setProperty("--ollama-host-scale", String(getHostScaleCompensation()));
 }
 
+function shouldReserveSplitLayout() {
+  return isPanelOpen
+    && getPanelViewMode() === "split"
+    && !isPanelMaximized
+    && window.innerWidth >= SPLIT_LAYOUT_MIN_VIEWPORT_WIDTH_PX;
+}
+
+function syncPageSplitLayout(host = ensureHost()) {
+  const reserve = shouldReserveSplitLayout();
+  const width = getResolvedSplitPaneWidth();
+  const root = document.documentElement;
+  const body = document.body;
+
+  host.style.setProperty("--ollama-quick-split-pane-width", `${width}px`);
+  root.style.setProperty("--ollama-quick-split-pane-width", `${width}px`);
+  root.classList.toggle("ollama-quick-page-split-layout", reserve);
+  if (body) {
+    body.classList.toggle("ollama-quick-page-split-layout", reserve);
+  }
+}
+
 function syncHostState(host = ensureHost()) {
+  const viewMode = getPanelViewMode();
   host.classList.toggle("is-panel-open", isPanelOpen);
   host.classList.toggle("is-panel-maximized", isPanelOpen && isPanelMaximized);
+  host.dataset.panelViewMode = viewMode;
+  PANEL_VIEW_MODES.forEach((mode) => {
+    host.classList.toggle(`is-view-${mode}`, viewMode === mode);
+  });
+  syncPageSplitLayout(host);
   applyShellTheme(host);
 }
 
@@ -9997,7 +10230,7 @@ function handleViewportResize() {
   }
 
   if (isPanelMaximized && window.innerWidth < TASK_RAIL_MIN_VIEWPORT_WIDTH_PX) {
-    isPanelMaximized = false;
+    setPanelViewMode("split", { open: false, persist: false });
     taskInboxExpanded = false;
     renderShell();
     return;
@@ -10012,6 +10245,7 @@ function handleViewportResize() {
   }
 
   syncHostScale(host);
+  syncPageSplitLayout(host);
   updateLauncherPlacement(host);
 }
 
@@ -10099,6 +10333,72 @@ function bindLauncherInteractions(host = ensureHost()) {
   launcher.onpointerup = finishLauncherDrag;
   launcher.onpointercancel = finishLauncherDrag;
   launcher.onlostpointercapture = finishLauncherDrag;
+}
+
+function applySplitPaneWidth(width, options = {}) {
+  splitPaneWidth = normalizeSplitPaneWidth(width);
+  syncPageSplitLayout(ensureHost());
+  if (options.persist) {
+    saveSplitPaneWidth().catch(() => {});
+  }
+}
+
+function handleSplitPaneResizePointerDown(event) {
+  if (event.button !== 0 || !shouldReserveSplitLayout()) {
+    return;
+  }
+
+  splitPaneResizeState = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    originWidth: getResolvedSplitPaneWidth(),
+  };
+  const host = ensureHost();
+  host.classList.add("is-resizing-split");
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handleSplitPaneResizePointerMove(event) {
+  if (!splitPaneResizeState || event.pointerId !== splitPaneResizeState.pointerId) {
+    return;
+  }
+
+  const deltaX = event.clientX - splitPaneResizeState.startClientX;
+  applySplitPaneWidth(splitPaneResizeState.originWidth - deltaX);
+  event.preventDefault();
+}
+
+function finishSplitPaneResize(event) {
+  if (!splitPaneResizeState || event.pointerId !== splitPaneResizeState.pointerId) {
+    return;
+  }
+
+  splitPaneResizeState = null;
+  ensureHost().classList.remove("is-resizing-split");
+  try {
+    if (event.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  } catch (_error) {
+    // Some browsers may already release capture before this handler runs.
+  }
+  saveSplitPaneWidth().catch(() => {});
+  event.preventDefault();
+}
+
+function bindSplitPaneResizeInteractions(host = ensureHost()) {
+  const handle = host.querySelector("[data-role='split-resize-handle']");
+  if (!(handle instanceof HTMLElement)) {
+    return;
+  }
+
+  handle.onpointerdown = handleSplitPaneResizePointerDown;
+  handle.onpointermove = handleSplitPaneResizePointerMove;
+  handle.onpointerup = finishSplitPaneResize;
+  handle.onpointercancel = finishSplitPaneResize;
+  handle.onlostpointercapture = finishSplitPaneResize;
 }
 
 function escapeHtml(value) {
@@ -14628,7 +14928,7 @@ function renderMessages() {
   const perspectivePanel = renderPerspectivePanel(latestPerspectiveRun);
 
   if (!chatMessages.length && !perspectivePanel) {
-    list.innerHTML = `<div class="ollama-quick-empty">${escapeHtml(tl("empty"))}</div>`;
+    list.innerHTML = renderBrowserAssistantEmpty(getFilteredActiveStarterEntries(currentPageCopilot), currentPageCopilot);
     return;
   }
 
@@ -14967,6 +15267,273 @@ function renderPowerPointSetupPanel() {
   `;
 }
 
+function getCurrentPageTitleForPanel() {
+  const title = String(document.title || "").replace(/\s+/g, " ").trim();
+  return title || tl("browserContextFallbackTitle");
+}
+
+function getCurrentPageHostForPanel() {
+  const host = String(window.location?.hostname || window.location?.host || "").trim();
+  return host || tl("browserContextFallbackHost");
+}
+
+function getPanelModelLabel(providerName, providerModel) {
+  const manualModel = getModelSelectionMode() === "manual" ? String(currentConfig?.selectedModel || "").trim() : "";
+  return manualModel || String(providerModel || providerName || "").trim() || tl("modelAutoOption");
+}
+
+function renderBrowserContextBar({ pageCopilot, providerName, providerModel } = {}) {
+  const title = getCurrentPageTitleForPanel();
+  const host = getCurrentPageHostForPanel();
+  const typeLabel = pageCopilot?.label || tl("browserContextFallbackTitle");
+  const adapterLabel = pageCopilot?.adapterLabel || tl("browserContextFallbackHost");
+  const modelLabel = getPanelModelLabel(providerName, providerModel);
+  return `
+    <section class="ollama-quick-browser-context" aria-label="${escapeHtml(tl("currentPageLabel"))}">
+      <div class="ollama-quick-browser-context-icon" aria-hidden="true">OC</div>
+      <div class="ollama-quick-browser-context-copy">
+        <div class="ollama-quick-browser-context-kicker">${escapeHtml(tl("browserPaneLabel"))}</div>
+        <div class="ollama-quick-browser-context-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="ollama-quick-browser-context-meta">
+          <span>${escapeHtml(host)}</span>
+          <span>${escapeHtml(tl("browserContextPageType", { type: typeLabel, adapter: adapterLabel }))}</span>
+          <span>${escapeHtml(tl("browserContextModel", { model: modelLabel }))}</span>
+        </div>
+      </div>
+      <div class="ollama-quick-browser-context-actions">
+        <details class="ollama-quick-context-add-menu">
+          <summary class="ollama-quick-context-add-trigger" title="${escapeHtml(tl("browserContextAdd"))}" aria-label="${escapeHtml(tl("browserContextAdd"))}">
+            <span aria-hidden="true">+</span>
+          </summary>
+          <div class="ollama-quick-context-add-popover">
+            <button class="ollama-quick-context-add-option" type="button" data-action="open-browser-tab-picker">${escapeHtml(tl("browserContextAddTabs"))}</button>
+            <button class="ollama-quick-context-add-option" type="button" data-action="open-local-document-picker">${escapeHtml(tl("browserContextAddDocs"))}</button>
+          </div>
+        </details>
+      </div>
+    </section>
+  `;
+}
+
+function getBrowserAssistantStarters(starterEntries = []) {
+  const preferredStarterKeys = [
+    "pageSummary",
+    "translatePage",
+    "githubSummary",
+    "githubRepoPurpose",
+    "codeExplain",
+    "chatActionItems",
+    "docExecutiveBrief",
+    "multiPerspective",
+  ];
+  const entries = Array.isArray(starterEntries) ? starterEntries.filter((starter) => starter?.showInPopup !== false) : [];
+  const selected = [];
+
+  preferredStarterKeys.forEach((starterKey) => {
+    const match = entries.find((starter) => starter.starterKey === starterKey);
+    if (match && !selected.some((item) => item.id === match.id)) {
+      selected.push(match);
+    }
+  });
+
+  entries.forEach((starter) => {
+    if (selected.length >= 4) {
+      return;
+    }
+    if (!selected.some((item) => item.id === starter.id) && !starter.isCustomStarterBuilder && !starter.isAgentFlowBuilder) {
+      selected.push(starter);
+    }
+  });
+
+  return selected.slice(0, 4);
+}
+
+function renderBrowserAssistantEmpty(starterEntries = [], pageCopilot = currentPageCopilot) {
+  const actionStarters = getBrowserAssistantStarters(starterEntries);
+  const typeLabel = pageCopilot?.adapterLabel || pageCopilot?.label || tl("browserContextFallbackTitle");
+  const actionButtons = actionStarters
+    .map((starter) => `
+      <button class="ollama-quick-browser-action-chip" type="button" data-action="use-starter" data-starter-id="${escapeHtml(starter.id)}">
+        ${escapeHtml(starter.label)}
+      </button>
+    `)
+    .join("");
+  return `
+    <div class="ollama-quick-empty ollama-quick-browser-empty">
+      <div class="ollama-quick-browser-empty-mark" aria-hidden="true">OC</div>
+      <div class="ollama-quick-browser-empty-copy">
+        <div class="ollama-quick-browser-empty-title">${escapeHtml(tl("browserActionsTitle", { type: typeLabel }))}</div>
+        <div class="ollama-quick-browser-empty-subtitle">${escapeHtml(tl("browserActionsSubtitle"))}</div>
+      </div>
+      <div class="ollama-quick-browser-actions" aria-label="${escapeHtml(tl("browserActionsLabel"))}">
+        ${actionButtons}
+      </div>
+    </div>
+  `;
+}
+
+function getSlashStarterBaseEntries(pageCopilot = currentPageCopilot) {
+  return getActiveStarterEntries(pageCopilot).filter((starter) => {
+    if (starter.isQaFlowBlock) {
+      return false;
+    }
+    if (starter.isBatchUrlQaBuilder) {
+      return true;
+    }
+    return starter.showInPopup !== false;
+  });
+}
+
+function getSlashStarterEntries(query = slashStarterQuery) {
+  return filterStarterEntriesByQuery(getSlashStarterBaseEntries(currentPageCopilot), query);
+}
+
+function getSlashStarterBadge(starter) {
+  if (starter.isAgentFlowBuilder || starter.isCustomStarterBuilder || starter.isBatchUrlQaBuilder || starter.isLandingPageBuilder) {
+    return tl("slashStarterBuilderBadge");
+  }
+  if (starter.isAgentFlow) {
+    return tl("slashStarterFlowBadge");
+  }
+  if (starter.isCustomStarter) {
+    return tl("slashStarterCustomBadge");
+  }
+  return "";
+}
+
+function renderSlashStarterMenu() {
+  if (!slashStarterMenuOpen) {
+    return "";
+  }
+
+  const entries = getSlashStarterEntries();
+  if (slashStarterActiveIndex >= entries.length) {
+    slashStarterActiveIndex = Math.max(0, entries.length - 1);
+  }
+  const queryLabel = slashStarterQuery ? `/${slashStarterQuery}` : tl("slashStarterMenuHint");
+  const rows = entries.length
+    ? entries.map((starter, index) => {
+      const badge = getSlashStarterBadge(starter);
+      const isActive = index === slashStarterActiveIndex;
+      return `
+        <button
+          class="ollama-quick-slash-item ${isActive ? "is-active" : ""}"
+          type="button"
+          data-action="select-slash-starter"
+          data-starter-id="${escapeHtml(starter.id)}"
+          role="option"
+          aria-selected="${String(isActive)}"
+        >
+          <span class="ollama-quick-slash-item-main">
+            <span class="ollama-quick-slash-item-title">${escapeHtml(starter.label)}</span>
+            <span class="ollama-quick-slash-item-description">${escapeHtml(starter.description || starter.prompt || "")}</span>
+          </span>
+          ${badge ? `<span class="ollama-quick-slash-item-badge">${escapeHtml(badge)}</span>` : ""}
+        </button>
+      `;
+    }).join("")
+    : `<div class="ollama-quick-slash-empty">${escapeHtml(tl("slashStarterEmpty"))}</div>`;
+
+  return `
+    <div class="ollama-quick-slash-menu" role="listbox" aria-label="${escapeHtml(tl("slashStarterMenuLabel"))}">
+      <div class="ollama-quick-slash-head">
+        <span>${escapeHtml(tl("slashStarterMenuLabel"))}</span>
+        <span>${escapeHtml(queryLabel)}</span>
+      </div>
+      <div class="ollama-quick-slash-list">${rows}</div>
+    </div>
+  `;
+}
+
+function renderSlashStarterMenuMount() {
+  const mount = ensureHost().querySelector("[data-role='slash-starter-menu']");
+  if (mount instanceof HTMLElement) {
+    mount.innerHTML = renderSlashStarterMenu();
+  }
+}
+
+function clearSlashStarterMenu() {
+  slashStarterMenuOpen = false;
+  slashStarterQuery = "";
+  slashStarterActiveIndex = 0;
+}
+
+function getSlashStarterTrigger(promptNode) {
+  if (!(promptNode instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+  const start = Number.isFinite(promptNode.selectionStart) ? promptNode.selectionStart : 0;
+  const end = Number.isFinite(promptNode.selectionEnd) ? promptNode.selectionEnd : start;
+  if (start !== end) {
+    return null;
+  }
+  const beforeCursor = promptNode.value.slice(0, start);
+  const match = beforeCursor.match(/(^|[\s\n])\/([^\n]*)$/);
+  if (!match) {
+    return null;
+  }
+  const slashIndex = beforeCursor.length - match[2].length - 1;
+  return {
+    start: slashIndex,
+    end: start,
+    query: match[2].trim(),
+  };
+}
+
+function syncSlashStarterMenuFromPrompt(promptNode) {
+  const trigger = getSlashStarterTrigger(promptNode);
+  if (!trigger) {
+    const wasOpen = slashStarterMenuOpen;
+    clearSlashStarterMenu();
+    return wasOpen;
+  }
+
+  const previousQuery = slashStarterQuery;
+  slashStarterMenuOpen = true;
+  slashStarterQuery = trigger.query;
+  if (previousQuery !== slashStarterQuery) {
+    slashStarterActiveIndex = 0;
+  }
+  return true;
+}
+
+function removeSlashStarterTriggerFromPrompt(promptNode) {
+  const trigger = getSlashStarterTrigger(promptNode);
+  if (!trigger) {
+    return;
+  }
+  const before = promptNode.value.slice(0, trigger.start);
+  const after = promptNode.value.slice(trigger.end);
+  const nextValue = `${before}${after}`.replace(/[ \t]+$/g, "");
+  promptNode.value = nextValue;
+  const nextCaret = Math.min(nextValue.length, before.length);
+  promptNode.selectionStart = nextCaret;
+  promptNode.selectionEnd = nextCaret;
+}
+
+function renderPanelViewModeSwitch(currentMode) {
+  return `
+    <div class="ollama-quick-view-switch" role="group" aria-label="Open Copilot view mode">
+      ${PANEL_VIEW_MODES.map((mode) => {
+        const labelKey = mode === "compact" ? "viewModeCompact" : mode === "large" ? "viewModeLarge" : "viewModeSplit";
+        const titleKey = mode === "compact" ? "viewModeCompactTitle" : mode === "large" ? "viewModeLargeTitle" : "viewModeSplitTitle";
+        const isActive = currentMode === mode;
+        return `
+          <button
+            class="ollama-quick-view-mode ${isActive ? "is-active" : ""}"
+            type="button"
+            data-action="set-panel-view-mode"
+            data-panel-view-mode="${escapeHtml(mode)}"
+            title="${escapeHtml(tl(titleKey))}"
+            aria-label="${escapeHtml(tl(titleKey))}"
+            aria-pressed="${String(isActive)}"
+          >${escapeHtml(tl(labelKey))}</button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderShell() {
   const host = ensureHost();
   const existingPrompt = host.querySelector("[data-role='prompt']");
@@ -14979,6 +15546,7 @@ function renderShell() {
   syncHostState(host);
   syncHostScale(host);
   currentPageCopilot = detectPageCopilot();
+  const currentPanelViewMode = getPanelViewMode();
   const startersExpanded = isPanelMaximized;
   const showGithubIncludePanel = isGithubAdapterActive(currentPageCopilot);
   const showTaskInbox = isTaskInboxVisible(currentPageCopilot);
@@ -15020,11 +15588,21 @@ function renderShell() {
       ${floatingIconEnabled ? `<button class="ollama-quick-launcher" type="button" data-action="toggle-panel" aria-label="${escapeHtml(tl("openQuickChat"))}" title="${escapeHtml(tl("openQuickChat"))}">
         <span class="ollama-quick-launcher-core"></span>
       </button>` : ""}
-      <section class="ollama-quick-panel ${isPanelOpen ? "is-open" : ""} ${isPanelMaximized ? "is-maximized" : ""} ${showDetachedTaskRail ? "has-task-rail" : ""}" data-role="panel">
+      <section class="ollama-quick-panel ${isPanelOpen ? "is-open" : ""} ${isPanelMaximized ? "is-maximized" : ""} is-view-${escapeHtml(currentPanelViewMode)} ${showDetachedTaskRail ? "has-task-rail" : ""}" data-role="panel">
+      <div
+        class="ollama-quick-split-resize-handle"
+        data-role="split-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="${escapeHtml(tl("splitResizeHandle"))}"
+        title="${escapeHtml(tl("splitResizeHandle"))}"
+        tabindex="0"
+      ></div>
       <header class="ollama-quick-header">
         <div class="ollama-quick-header-main">
           <div class="ollama-quick-eyebrow">${escapeHtml(tl("quickAccess"))}</div>
           <h2>${escapeHtml(tl("liveChat"))}</h2>
+          ${renderPanelViewModeSwitch(currentPanelViewMode)}
         </div>
         <div class="ollama-quick-header-actions">
           ${showTaskInbox ? `
@@ -15077,6 +15655,7 @@ function renderShell() {
             <span class="ollama-quick-status-indicator" data-role="status-indicator"></span>
             <div class="ollama-quick-status" data-role="status">${escapeHtml(tl("ready"))}</div>
           </div>
+          ${renderBrowserContextBar({ pageCopilot: currentPageCopilot, providerName, providerModel })}
           ${renderBatchUrlQaMiniStatus()}
           ${pendingSuggestedStarterAction?.label ? `
             <div class="ollama-quick-starter-route-banner">
@@ -15110,6 +15689,7 @@ function renderShell() {
             <div class="ollama-quick-compose-main">
               <div class="ollama-quick-compose-attachments" data-role="attachments"></div>
               <div class="ollama-quick-compose-input">
+                <div class="ollama-quick-slash-menu-mount" data-role="slash-starter-menu">${renderSlashStarterMenu()}</div>
                 <label class="ollama-quick-compose-upload" title="${escapeHtml(tl("uploadFile"))}" aria-label="${escapeHtml(tl("uploadFile"))}">
                   ⊕
                   <input class="ollama-quick-file-input" type="file" accept="image/*,.pdf,.txt,.md,.json,.csv,application/pdf,text/plain,text/markdown,application/json,text/json,text/csv" data-role="image-upload" multiple />
@@ -15244,6 +15824,7 @@ function renderShell() {
   host.ondragleave = handleDragLeave;
   host.ondrop = handleDrop;
   bindLauncherInteractions(host);
+  bindSplitPaneResizeInteractions(host);
   updateLauncherPlacement(host);
   bindStarterRailInteractions();
   renderMessages();
@@ -15341,16 +15922,8 @@ function togglePanelMaximize(force) {
     return;
   }
 
-  const wasMaximized = panel.classList.contains("is-maximized");
   const next = typeof force === "boolean" ? force : !panel.classList.contains("is-maximized");
-  isPanelMaximized = next;
-  if (next && !wasMaximized && window.innerWidth >= TASK_RAIL_MIN_VIEWPORT_WIDTH_PX) {
-    isTaskRailCollapsed = true;
-  }
-  if (!next) {
-    taskInboxExpanded = false;
-    starterSearch = "";
-  }
+  setPanelViewMode(next ? "large" : "split");
   panel.classList.toggle("is-maximized", next);
   syncHostState(host);
 }
@@ -17036,6 +17609,156 @@ async function recordStarterUsage(starterId) {
   }
 }
 
+async function activateStarterEntry(starter) {
+  if (!starter) {
+    return;
+  }
+  openLargeViewForStarterIfNeeded(starter);
+  if (starter.starterKey !== "landingPowerPoint") {
+    clearPendingPowerPointThemeExecution();
+  }
+  recordStarterUsage(starter.id).catch(() => {});
+
+  if (starter.isSuggestedFollowup) {
+    pendingSuggestedStarterAction = {
+      label: starter.label,
+      prompt: starter.prompt,
+      sourceMessageId: starter.sourceMessageId || "",
+      sourceActionIndex: starter.sourceActionIndex,
+    };
+    clearPendingStarterExecution();
+    renderShell();
+    return;
+  }
+
+  if (starter.id === "builtin:createCustomStarter") {
+    pendingSuggestedStarterAction = null;
+    customStarterBuilderOpen = true;
+    agentFlowBuilderOpen = false;
+    batchUrlQaBuilderOpen = false;
+    landingPageBuilderOpen = false;
+    includePickerOpen = false;
+    localDocumentPickerOpen = false;
+    browserTabPickerOpen = false;
+    if (!customStarterBuilderDraft.purpose && !customStarterBuilderConversation.length) {
+      resetCustomStarterBuilderState();
+    }
+    renderShell();
+    return;
+  }
+
+  if (starter.id === "builtin:createAgentFlow") {
+    agentFlowBuilderOpen = true;
+    customStarterBuilderOpen = false;
+    batchUrlQaBuilderOpen = false;
+    landingPageBuilderOpen = false;
+    includePickerOpen = false;
+    localDocumentPickerOpen = false;
+    browserTabPickerOpen = false;
+    resetAgentFlowBuilderState();
+    renderShell();
+    return;
+  }
+
+  if (starter.id === "builtin:batchUrlQaWorkflow") {
+    batchUrlQaBuilderOpen = true;
+    batchUrlQaShouldFocusUrls = true;
+    customStarterBuilderOpen = false;
+    agentFlowBuilderOpen = false;
+    landingPageBuilderOpen = false;
+    includePickerOpen = false;
+    localDocumentPickerOpen = false;
+    browserTabPickerOpen = false;
+    if (!batchUrlQaBuilderDraft) {
+      resetBatchUrlQaBuilderState();
+    }
+    loadBatchUrlQaActiveJob().catch(() => {});
+    renderShell();
+    return;
+  }
+
+  if (starter.id === "builtin:landingPageBuilder") {
+    landingPageBuilderOpen = true;
+    customStarterBuilderOpen = false;
+    agentFlowBuilderOpen = false;
+    batchUrlQaBuilderOpen = false;
+    includePickerOpen = false;
+    localDocumentPickerOpen = false;
+    browserTabPickerOpen = false;
+    resetLandingPageBuilderState();
+    renderShell();
+    return;
+  }
+
+  if (starter.id === "builtin:investmentProposalBuilder") {
+    customStarterBuilderOpen = false;
+    agentFlowBuilderOpen = false;
+    batchUrlQaBuilderOpen = false;
+    landingPageBuilderOpen = false;
+    includePickerOpen = false;
+    localDocumentPickerOpen = false;
+    browserTabPickerOpen = false;
+    renderShell();
+    setStatus(tl("investmentProposalBuilderOpening"));
+    try {
+      await openInvestmentProposalBuilderWindow();
+      setStatus(tl("investmentProposalBuilderOpened"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error || tl("investmentProposalBuilderOpenFailed")));
+    }
+    return;
+  }
+
+  if (isGenerating || customStarterBuilderIsGenerating || customStarterBuilderIsSaving) {
+    return;
+  }
+
+  pendingSuggestedStarterAction = null;
+  const executionPlan = resolveStarterExecutionPlan(starter);
+  if (starter.starterKey === "landingPowerPoint" || agentFlowIncludesPowerPoint(starter)) {
+    pageContextMode = "always";
+    clearPendingStarterExecution();
+    setPendingPowerPointThemeExecution(
+      starter.isAgentFlow
+        ? {
+          ...executionPlan,
+          agentFlowStarter: starter,
+          starter,
+        }
+        : executionPlan
+    );
+    renderShell();
+    scheduleConversationSave();
+    return;
+  }
+  clearPendingPowerPointThemeExecution();
+  clearPendingStarterExecution();
+  await startStarterExecution(executionPlan, executionPlan.suggestedModel);
+}
+
+async function activateStarterById(starterId) {
+  const starter = getActiveStarterEntries(currentPageCopilot).find((item) => item.id === starterId);
+  if (!starter) {
+    return;
+  }
+  await activateStarterEntry(starter);
+}
+
+async function selectSlashStarter(starterId = "") {
+  const entries = getSlashStarterEntries();
+  const starter = entries.find((item) => item.id === starterId) || entries[slashStarterActiveIndex];
+  if (!starter) {
+    return;
+  }
+  const prompt = ensureHost().querySelector("[data-role='prompt']");
+  if (prompt instanceof HTMLTextAreaElement) {
+    removeSlashStarterTriggerFromPrompt(prompt);
+  }
+  clearSlashStarterMenu();
+  renderSlashStarterMenuMount();
+  await activateStarterEntry(starter);
+}
+
 async function handleClick(event) {
   const target = event.target;
   if (!(target instanceof Element)) {
@@ -17064,6 +17787,12 @@ async function handleClick(event) {
 
   if (action === TEAMS_INLINE_ACTION_ID) {
     pasteTeamsMessageFromInlineAction();
+    return;
+  }
+
+  if (action === "set-panel-view-mode") {
+    setPanelViewMode(actionNode.dataset.panelViewMode || "split");
+    renderShell();
     return;
   }
 
@@ -17656,130 +18385,13 @@ async function handleClick(event) {
 
   if (action === "use-starter") {
     const starterId = actionNode.dataset.starterId || "";
-    const starter = getActiveStarterEntries(currentPageCopilot).find((item) => item.id === starterId);
-    if (!starter) {
-      return;
-    }
-    if (starter.starterKey !== "landingPowerPoint") {
-      clearPendingPowerPointThemeExecution();
-    }
-    recordStarterUsage(starter.id).catch(() => {});
+    clearSlashStarterMenu();
+    await activateStarterById(starterId);
+    return;
+  }
 
-    if (starter.isSuggestedFollowup) {
-      pendingSuggestedStarterAction = {
-        label: starter.label,
-        prompt: starter.prompt,
-        sourceMessageId: starter.sourceMessageId || "",
-        sourceActionIndex: starter.sourceActionIndex,
-      };
-      clearPendingStarterExecution();
-      renderShell();
-      return;
-    }
-
-    if (starter.id === "builtin:createCustomStarter") {
-      pendingSuggestedStarterAction = null;
-      customStarterBuilderOpen = true;
-      agentFlowBuilderOpen = false;
-      batchUrlQaBuilderOpen = false;
-      landingPageBuilderOpen = false;
-      includePickerOpen = false;
-      localDocumentPickerOpen = false;
-      browserTabPickerOpen = false;
-      if (!customStarterBuilderDraft.purpose && !customStarterBuilderConversation.length) {
-        resetCustomStarterBuilderState();
-      }
-      renderShell();
-      return;
-    }
-
-    if (starter.id === "builtin:createAgentFlow") {
-      agentFlowBuilderOpen = true;
-      customStarterBuilderOpen = false;
-      batchUrlQaBuilderOpen = false;
-      landingPageBuilderOpen = false;
-      includePickerOpen = false;
-      localDocumentPickerOpen = false;
-      browserTabPickerOpen = false;
-      resetAgentFlowBuilderState();
-      renderShell();
-      return;
-    }
-
-    if (starter.id === "builtin:batchUrlQaWorkflow") {
-      batchUrlQaBuilderOpen = true;
-      batchUrlQaShouldFocusUrls = true;
-      customStarterBuilderOpen = false;
-      agentFlowBuilderOpen = false;
-      landingPageBuilderOpen = false;
-      includePickerOpen = false;
-      localDocumentPickerOpen = false;
-      browserTabPickerOpen = false;
-      if (!batchUrlQaBuilderDraft) {
-        resetBatchUrlQaBuilderState();
-      }
-      loadBatchUrlQaActiveJob().catch(() => {});
-      renderShell();
-      return;
-    }
-
-    if (starter.id === "builtin:landingPageBuilder") {
-      landingPageBuilderOpen = true;
-      customStarterBuilderOpen = false;
-      agentFlowBuilderOpen = false;
-      batchUrlQaBuilderOpen = false;
-      includePickerOpen = false;
-      localDocumentPickerOpen = false;
-      browserTabPickerOpen = false;
-      resetLandingPageBuilderState();
-      renderShell();
-      return;
-    }
-
-    if (starter.id === "builtin:investmentProposalBuilder") {
-      customStarterBuilderOpen = false;
-      agentFlowBuilderOpen = false;
-      batchUrlQaBuilderOpen = false;
-      landingPageBuilderOpen = false;
-      includePickerOpen = false;
-      localDocumentPickerOpen = false;
-      browserTabPickerOpen = false;
-      renderShell();
-      setStatus(tl("investmentProposalBuilderOpening"));
-      try {
-        await openInvestmentProposalBuilderWindow();
-        setStatus(tl("investmentProposalBuilderOpened"));
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : String(error || tl("investmentProposalBuilderOpenFailed")));
-      }
-      return;
-    }
-
-    if (isGenerating || customStarterBuilderIsGenerating || customStarterBuilderIsSaving) {
-      return;
-    }
-
-    pendingSuggestedStarterAction = null;
-    const executionPlan = resolveStarterExecutionPlan(starter);
-    if (starter.starterKey === "landingPowerPoint" || agentFlowIncludesPowerPoint(starter)) {
-      pageContextMode = "always";
-      clearPendingStarterExecution();
-      setPendingPowerPointThemeExecution(
-        starter.isAgentFlow
-          ? {
-              ...executionPlan,
-              agentFlowStarter: starter,
-              starter,
-            }
-          : executionPlan
-      );
-      renderShell();
-      scheduleConversationSave();
-      return;
-    }
-    clearPendingPowerPointThemeExecution();
-    clearPendingStarterExecution();
-    await startStarterExecution(executionPlan, executionPlan.suggestedModel);
+  if (action === "select-slash-starter") {
+    await selectSlashStarter(actionNode.dataset.starterId || "");
     return;
   }
 
@@ -18735,6 +19347,12 @@ function handleInput(event) {
     return;
   }
 
+  if (target instanceof HTMLTextAreaElement && target.dataset.role === "prompt") {
+    syncSlashStarterMenuFromPrompt(target);
+    renderSlashStarterMenuMount();
+    return;
+  }
+
   if (target instanceof HTMLInputElement && target.dataset.role === "agent-flow-name") {
     ensureAgentFlowBuilderDraft().name = target.value;
     return;
@@ -18938,8 +19556,64 @@ async function handleKeydown(event) {
     return;
   }
 
+  if (target instanceof HTMLElement && target.dataset.role === "split-resize-handle") {
+    const step = event.shiftKey ? 48 : 16;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applySplitPaneWidth(getResolvedSplitPaneWidth() + step, { persist: true });
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applySplitPaneWidth(getResolvedSplitPaneWidth() - step, { persist: true });
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      applySplitPaneWidth(SPLIT_PANE_MIN_WIDTH_PX, { persist: true });
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      applySplitPaneWidth(SPLIT_PANE_MAX_WIDTH_PX, { persist: true });
+      return;
+    }
+  }
+
   if (!(target instanceof HTMLTextAreaElement)) {
     return;
+  }
+
+  if (target.dataset.role === "prompt" && slashStarterMenuOpen) {
+    const entries = getSlashStarterEntries();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      slashStarterActiveIndex = entries.length ? (slashStarterActiveIndex + 1) % entries.length : 0;
+      renderSlashStarterMenuMount();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      slashStarterActiveIndex = entries.length ? (slashStarterActiveIndex - 1 + entries.length) % entries.length : 0;
+      renderSlashStarterMenuMount();
+      return;
+    }
+    if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      await selectSlashStarter();
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      await selectSlashStarter();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearSlashStarterMenu();
+      renderSlashStarterMenuMount();
+      return;
+    }
   }
 
   if (target.dataset.role === "prompt" && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -19402,6 +20076,8 @@ async function bootstrap() {
     await loadModels();
     await loadSavedTaskReminders().catch(() => {});
     await loadLauncherPosition();
+    await loadPanelViewMode();
+    await loadSplitPaneWidth();
     renderShell();
     setStatus(getProviderModelStatusText());
   } catch (error) {

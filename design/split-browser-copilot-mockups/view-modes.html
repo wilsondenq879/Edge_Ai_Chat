@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Copilot View Modes</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="view-modes.css" />
+  </head>
+  <body>
+    <header class="review-shell">
+      <div>
+        <p class="kicker">Open Copilot View Modes</p>
+        <h1>Compact, split, and large views</h1>
+      </div>
+      <nav class="screen-tabs" aria-label="View mode screens">
+        <button class="tab is-active" type="button" data-mode="compact">Compact</button>
+        <button class="tab" type="button" data-mode="split">Split</button>
+        <button class="tab" type="button" data-mode="large">Large</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="view-board is-active" data-board="compact" aria-label="Compact view mockup">
+        <div class="mode-label">
+          <p class="kicker">View 1</p>
+          <h2>Compact floating panel</h2>
+          <span>Best for quick page questions without changing the browser layout.</span>
+        </div>
+        <div class="mode-browser compact-mode">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">github.com/ASUS-WL/asuswrt-src/pull/1842</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <section class="mock-page">
+            <div class="mock-page-head">
+              <div class="repo-mark">PR</div>
+              <div>
+                <strong>ASUS-WL / asuswrt-src</strong>
+                <p>Pull request review</p>
+              </div>
+            </div>
+            <article class="mock-hero">
+              <strong>Improve WAN failover routing for multi-WAN profiles</strong>
+              <p>Conversation, checks, changed files, and reviewer notes stay full width.</p>
+            </article>
+            <div class="mock-lines">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </section>
+          <button class="mode-orb" type="button"><span></span></button>
+          <aside class="compact-panel">
+            <header class="mini-panel-head">
+              <div>
+                <p class="kicker">Page Copilot</p>
+                <h2>Quick answer</h2>
+              </div>
+              <button type="button">x</button>
+            </header>
+            <div class="message assistant">
+              <strong>Fast read</strong>
+              <p>The PR risk is DNS validation before failover promotion.</p>
+            </div>
+            <div class="mode-chip-row">
+              <span>Auto</span>
+              <span>Ask first</span>
+            </div>
+            <form class="composer compact-composer">
+              <textarea aria-label="Compact prompt" placeholder="Ask about this page"></textarea>
+              <button class="send-button" type="button">^</button>
+            </form>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view-board" data-board="split" aria-label="Split view mockup">
+        <div class="mode-label">
+          <p class="kicker">View 2</p>
+          <h2>Docked split browser</h2>
+          <span>Best default mode for Claude or ChatGPT browser-plugin style work.</span>
+        </div>
+        <div class="mode-browser split-mode">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">github.com/ASUS-WL/asuswrt-src/pull/1842/files</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="mode-split-grid">
+            <section class="mock-page">
+              <div class="mock-page-head">
+                <div class="repo-mark">GH</div>
+                <div>
+                  <strong>Files changed</strong>
+                  <p>Selected lines 84-112</p>
+                </div>
+              </div>
+              <div class="selected-block">
+                <strong>Route promotion happens before resolver validation.</strong>
+                <p>The page remains usable while Copilot works beside it.</p>
+              </div>
+              <div class="mock-diff">
+                <span class="add">+ promote_standby_wan(profile_id);</span>
+                <span class="add">+ schedule_health_probe(profile_id, 30);</span>
+                <span class="remove">- validate_dns(active_wan);</span>
+              </div>
+            </section>
+            <aside class="split-panel">
+              <header class="mini-panel-head">
+                <div>
+                  <p class="kicker">Review Copilot</p>
+                  <h2>Action-ready</h2>
+                </div>
+                <button type="button">[]</button>
+              </header>
+              <div class="mode-chip-row">
+                <span>PR page</span>
+                <span>Ask before acting</span>
+              </div>
+              <div class="message assistant">
+                <strong>Suggested comment</strong>
+                <p>Ask for DNS availability validation before standby WAN promotion.</p>
+              </div>
+              <div class="starter-rail stacked">
+                <button type="button">Draft comment</button>
+                <button type="button">Find regressions</button>
+                <button type="button">Create task</button>
+              </div>
+              <form class="composer compact-composer">
+                <textarea aria-label="Split prompt" placeholder="Ask the next question"></textarea>
+                <button class="send-button" type="button">^</button>
+              </form>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-board" data-board="large" aria-label="Large view mockup">
+        <div class="mode-label">
+          <p class="kicker">View 3</p>
+          <h2>Large focus workspace</h2>
+          <span>Best for deeper review, multi-step analysis, sources, and task rail work.</span>
+        </div>
+        <div class="mode-browser large-mode">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">open-copilot large workspace attached to current tab</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="large-grid">
+            <section class="page-preview">
+              <div class="mock-page-head">
+                <div class="repo-mark">PR</div>
+                <div>
+                  <strong>Current page preview</strong>
+                  <p>Browser context stays visible at reduced width.</p>
+                </div>
+              </div>
+              <div class="page-preview-card">
+                <strong>Changed routing flow</strong>
+                <p>WAN promotion fires earlier in the failover sequence.</p>
+              </div>
+              <div class="page-preview-card half">
+                <strong>Potential gap</strong>
+                <p>Resolver readiness is checked later.</p>
+              </div>
+            </section>
+            <section class="large-chat">
+              <header class="mini-panel-head">
+                <div>
+                  <p class="kicker">Maximized Copilot</p>
+                  <h2>Review workspace</h2>
+                </div>
+                <button type="button">restore</button>
+              </header>
+              <div class="status-banner">
+                <span class="status-dot"></span>
+                <p>Analyzing selected diff, local spec, and reviewer comments.</p>
+              </div>
+              <div class="message assistant large">
+                <strong>Working summary</strong>
+                <p>The main merge risk is failover promotion before resolver readiness. I recommend one code change, one regression test, and one review comment.</p>
+              </div>
+              <div class="review-actions">
+                <button type="button">Draft review</button>
+                <button type="button">Create checklist</button>
+                <button type="button">Save reminder</button>
+              </div>
+              <form class="composer workspace-composer">
+                <button class="icon-button" type="button">+</button>
+                <textarea aria-label="Large prompt" placeholder="Ask the next question"></textarea>
+                <button class="send-button" type="button">^</button>
+              </form>
+            </section>
+            <aside class="large-rail">
+              <strong>Tasks</strong>
+              <span class="rail-item active">Add DNS readiness comment</span>
+              <span class="rail-item">Check rollback tests</span>
+              <span class="rail-item">Summarize merge risk</span>
+            </aside>
+            <aside class="large-sources">
+              <strong>Sources</strong>
+              <span class="source-pill">Browser tab 1</span>
+              <span class="source-pill">Local docs 2</span>
+              <span class="source-pill">GitHub files 4</span>
+            </aside>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="view-modes.js"></script>
+  </body>
+</html>

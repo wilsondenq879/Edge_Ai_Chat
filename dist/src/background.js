@@ -84,6 +84,7 @@ const DEFAULT_CONFIG = {
   replyLanguage: "zh-TW",
   settingsTheme: "system",
   taskExtractionWindowDays: DEFAULT_TASK_EXTRACTION_WINDOW_DAYS,
+  floatingIconEnabled: true,
   starterHoverTipsEnabled: true,
   teamsInlineActionEnabled: true,
   telegramNotificationEnabled: false,

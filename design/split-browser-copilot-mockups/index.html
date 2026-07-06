@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Copilot Split Browser Mockups</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="review-shell">
+      <div>
+        <p class="kicker">Open Copilot Interface Proposal</p>
+        <h1>Split browser workspace</h1>
+      </div>
+      <nav class="screen-tabs" aria-label="Mockup screens">
+        <button class="tab is-active" type="button" data-screen="live">Live split</button>
+        <button class="tab" type="button" data-screen="action">Action review</button>
+        <button class="tab" type="button" data-screen="workspace">Workspace</button>
+        <button class="tab" type="button" data-screen="tools">Tools</button>
+        <button class="tab" type="button" data-screen="mobile">Mobile</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="artboard is-active" data-artboard="live" aria-label="Live split browser mockup">
+        <div class="browser-frame">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">github.com/ASUS-WL/asuswrt-src/pull/1842</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="split-layout">
+            <section class="web-surface github-surface">
+              <div class="repo-header">
+                <div class="repo-mark">OC</div>
+                <div>
+                  <strong>ASUS-WL / asuswrt-src</strong>
+                  <span>Pull request review</span>
+                </div>
+              </div>
+              <div class="repo-tabs">
+                <span class="is-current">Conversation</span>
+                <span>Commits</span>
+                <span>Checks</span>
+                <span>Files changed</span>
+              </div>
+              <article class="pull-card">
+                <div class="pr-state">Open</div>
+                <h2>Improve WAN failover routing for multi-WAN profiles</h2>
+                <p>#1842 opened 18 minutes ago by networking-projects</p>
+                <div class="status-strip">
+                  <span>3 checks passing</span>
+                  <span>2 files changed</span>
+                  <span>+184 -42</span>
+                </div>
+              </article>
+              <section class="diff-section">
+                <div class="diff-head">
+                  <strong>src/network/wan_failover.c</strong>
+                  <span>Viewed</span>
+                </div>
+                <div class="code-row add">+ if (route_metric &lt; active_metric) {</div>
+                <div class="code-row add">+   promote_standby_wan(profile_id);</div>
+                <div class="code-row remove">- update_route_table(active_wan);</div>
+                <div class="code-row">  persist_failover_state(profile_id);</div>
+                <div class="code-row add">+ schedule_health_probe(profile_id, 30);</div>
+              </section>
+              <section class="comment-thread">
+                <div class="avatar"></div>
+                <div>
+                  <strong>Reviewer note</strong>
+                  <p>Can we verify the standby interface has DNS before promotion?</p>
+                </div>
+              </section>
+            </section>
+
+            <aside class="copilot-panel live-panel">
+              <header class="copilot-header">
+                <div>
+                  <p class="kicker">Page Copilot</p>
+                  <h2>GitHub review</h2>
+                </div>
+                <div class="panel-icons">
+                  <button type="button">+</button>
+                  <button type="button">[]</button>
+                  <button type="button">x</button>
+                </div>
+              </header>
+              <div class="context-row">
+                <span>Auto</span>
+                <span>PR page</span>
+                <span>Ask before acting</span>
+              </div>
+              <section class="message-list">
+                <div class="message user">Review this PR and tell me the risky parts.</div>
+                <div class="message assistant">
+                  <strong>Initial read</strong>
+                  <p>The routing change looks useful, but DNS readiness and rollback timing need a closer pass before merge.</p>
+                  <div class="mini-checks">
+                    <span>Tests</span>
+                    <span>State</span>
+                    <span>Rollback</span>
+                  </div>
+                </div>
+              </section>
+              <div class="starter-rail">
+                <button type="button">Summarize PR</button>
+                <button type="button">Find regressions</button>
+                <button type="button">Draft comment</button>
+              </div>
+              <form class="composer">
+                <button class="icon-button" type="button">+</button>
+                <textarea aria-label="Prompt" placeholder="Ask about this page"></textarea>
+                <button class="send-button" type="button">^</button>
+              </form>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="artboard" data-artboard="action" aria-label="Action review mockup">
+        <div class="browser-frame">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">github.com/ASUS-WL/asuswrt-src/pull/1842/files</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="split-layout">
+            <section class="web-surface files-surface">
+              <div class="repo-header">
+                <div class="repo-mark">GH</div>
+                <div>
+                  <strong>Files changed</strong>
+                  <span>2 files, 226 additions and deletions</span>
+                </div>
+              </div>
+              <div class="selection-highlight">
+                <p>Selected lines 84-112</p>
+                <strong>Route promotion happens before resolver validation.</strong>
+              </div>
+              <div class="code-compare">
+                <div>
+                  <span class="line-num">84</span>
+                  <span class="code-row add">+ promote_standby_wan(profile_id);</span>
+                </div>
+                <div>
+                  <span class="line-num">85</span>
+                  <span class="code-row add">+ schedule_health_probe(profile_id, 30);</span>
+                </div>
+                <div>
+                  <span class="line-num">86</span>
+                  <span class="code-row remove">- validate_dns(active_wan);</span>
+                </div>
+              </div>
+              <div class="dimmed-region"></div>
+            </section>
+
+            <aside class="copilot-panel action-panel">
+              <header class="copilot-header">
+                <div>
+                  <p class="kicker">Review before acting</p>
+                  <h2>Proposed action</h2>
+                </div>
+                <div class="panel-icons">
+                  <button type="button">...</button>
+                  <button type="button">x</button>
+                </div>
+              </header>
+              <section class="action-summary">
+                <span class="status-dot"></span>
+                <div>
+                  <strong>Draft one GitHub review comment</strong>
+                  <p>Uses selected lines only. No page mutation until approved.</p>
+                </div>
+              </section>
+              <section class="plan-list">
+                <div class="plan-step is-done"><span>1</span><p>Read selected diff lines</p></div>
+                <div class="plan-step is-current"><span>2</span><p>Explain risk and test gap</p></div>
+                <div class="plan-step"><span>3</span><p>Place draft comment in review box</p></div>
+              </section>
+              <div class="draft-comment">
+                <strong>Draft</strong>
+                <p>Before promotion, can we validate DNS availability on the standby interface? Otherwise failover may succeed at route level but still leave clients unable to resolve domains.</p>
+              </div>
+              <div class="permission-row">
+                <button class="secondary" type="button">Edit draft</button>
+                <button class="secondary danger" type="button">Cancel</button>
+                <button class="primary" type="button">Allow</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="artboard" data-artboard="workspace" aria-label="Maximized workspace mockup">
+        <div class="browser-frame maximized-frame">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">open-copilot workspace attached to current browser tab</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="workspace-layout">
+            <section class="web-surface workspace-browser">
+              <div class="repo-header">
+                <div class="repo-mark">PR</div>
+                <div>
+                  <strong>Current page</strong>
+                  <span>GitHub PR remains visible while Copilot expands</span>
+                </div>
+              </div>
+              <div class="analysis-map">
+                <div class="map-card wide">
+                  <strong>Changed routing flow</strong>
+                  <p>WAN promotion now fires earlier in the failover sequence.</p>
+                </div>
+                <div class="map-card">
+                  <strong>Potential gap</strong>
+                  <p>Resolver readiness is checked later.</p>
+                </div>
+                <div class="map-card">
+                  <strong>Test angle</strong>
+                  <p>Simulate standby WAN with broken DNS.</p>
+                </div>
+              </div>
+            </section>
+            <section class="copilot-panel workspace-panel">
+              <header class="copilot-header">
+                <div>
+                  <p class="kicker">Maximized Copilot</p>
+                  <h2>Review workspace</h2>
+                </div>
+                <div class="panel-icons">
+                  <button type="button">M</button>
+                  <button type="button">[]</button>
+                  <button type="button">x</button>
+                </div>
+              </header>
+              <div class="workspace-grid">
+                <main class="workspace-chat">
+                  <div class="status-banner">
+                    <span class="status-dot"></span>
+                    <p>Analyzing diff, comments, and included repository context</p>
+                  </div>
+                  <div class="message assistant large">
+                    <strong>Risk summary</strong>
+                    <p>The PR changes failover ordering. I would ask for one DNS readiness check before route promotion and one rollback test for probe failure.</p>
+                    <ol>
+                      <li>Validate DNS on standby WAN before promotion.</li>
+                      <li>Confirm route table rollback if probe scheduling fails.</li>
+                      <li>Add a regression test for multi-WAN profile switching.</li>
+                    </ol>
+                  </div>
+                  <div class="review-actions">
+                    <button type="button">Draft GitHub comment</button>
+                    <button type="button">Create test checklist</button>
+                    <button type="button">Save task reminder</button>
+                  </div>
+                  <div class="review-note">
+                    <strong>Next suggested move</strong>
+                    <p>Ask permission to place a review draft on the selected diff lines.</p>
+                  </div>
+                  <form class="composer workspace-composer">
+                    <button class="icon-button" type="button">+</button>
+                    <textarea aria-label="Prompt" placeholder="Ask the next question"></textarea>
+                    <button class="send-button" type="button">^</button>
+                  </form>
+                </main>
+                <aside class="task-rail">
+                  <div class="rail-head">
+                    <strong>Tasks</strong>
+                    <span>3 found</span>
+                  </div>
+                  <div class="task-row is-active">Add DNS readiness comment</div>
+                  <div class="task-row">Check rollback tests</div>
+                  <div class="task-row">Summarize merge risk</div>
+                </aside>
+                <aside class="context-sidebar">
+                  <label>
+                    Model
+                    <select><option>Auto route</option></select>
+                  </label>
+                  <label>
+                    Page context
+                    <select><option>Always include</option></select>
+                  </label>
+                  <div class="source-row"><span>Browser tabs</span><strong>1</strong></div>
+                  <div class="source-row"><span>Local docs</span><strong>2</strong></div>
+                  <div class="source-row"><span>GitHub files</span><strong>4</strong></div>
+                </aside>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="artboard" data-artboard="tools" aria-label="Tools and sources mockup">
+        <div class="browser-frame">
+          <div class="browser-topbar">
+            <div class="window-controls"><span></span><span></span><span></span></div>
+            <div class="address-bar">developer workspace with attached tools</div>
+            <div class="browser-actions"><span></span><span></span><span></span></div>
+          </div>
+          <div class="tools-layout">
+            <section class="tool-main">
+              <div class="tool-tabs">
+                <span class="is-current">Browser</span>
+                <span>Files</span>
+                <span>Terminal</span>
+                <span>Notes</span>
+              </div>
+              <div class="tool-preview">
+                <div class="preview-line strong"></div>
+                <div class="preview-line"></div>
+                <div class="preview-line short"></div>
+                <div class="preview-grid">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+            </section>
+            <aside class="copilot-panel tools-panel">
+              <header class="copilot-header">
+                <div>
+                  <p class="kicker">Context builder</p>
+                  <h2>Sources and tools</h2>
+                </div>
+                <div class="panel-icons">
+                  <button type="button">+</button>
+                  <button type="button">x</button>
+                </div>
+              </header>
+              <div class="segmented-control">
+                <button class="is-active" type="button">Sources</button>
+                <button type="button">Actions</button>
+                <button type="button">History</button>
+              </div>
+              <section class="source-stack">
+                <div class="source-item">
+                  <span class="source-icon">B</span>
+                  <div><strong>Current browser tab</strong><p>GitHub PR files and comments</p></div>
+                  <button type="button">On</button>
+                </div>
+                <div class="source-item">
+                  <span class="source-icon">F</span>
+                  <div><strong>Local files</strong><p>spec/in-page-chat-panel.md</p></div>
+                  <button type="button">On</button>
+                </div>
+                <div class="source-item">
+                  <span class="source-icon">T</span>
+                  <div><strong>Terminal</strong><p>Read-only command output</p></div>
+                  <button type="button">Off</button>
+                </div>
+              </section>
+              <div class="starter-rail stacked">
+                <button type="button">Create review checklist</button>
+                <button type="button">Extract TODO issues</button>
+                <button type="button">Compare with local spec</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="artboard" data-artboard="mobile" aria-label="Mobile responsive mockup">
+        <div class="mobile-stage">
+          <div class="phone">
+            <div class="phone-top"></div>
+            <section class="mobile-page">
+              <div class="mobile-browser-bar">github.com/ASUS-WL</div>
+              <article class="mobile-card">
+                <strong>ASUS-WL / asuswrt-src</strong>
+                <p>PR #1842 needs review</p>
+              </article>
+              <div class="mobile-list">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <button class="floating-orb" type="button"><span></span></button>
+              <aside class="mobile-copilot">
+                <div class="mobile-sheet-handle"></div>
+                <header class="copilot-header">
+                  <div>
+                    <p class="kicker">Page Copilot</p>
+                    <h2>Review PR</h2>
+                  </div>
+                  <div class="panel-icons"><button type="button">x</button></div>
+                </header>
+                <div class="message assistant">
+                  <strong>Quick take</strong>
+                  <p>DNS readiness is the main merge risk.</p>
+                </div>
+                <div class="starter-rail">
+                  <button type="button">Comment</button>
+                  <button type="button">Tasks</button>
+                </div>
+                <form class="composer">
+                  <textarea aria-label="Prompt" placeholder="Ask"></textarea>
+                  <button class="send-button" type="button">^</button>
+                </form>
+              </aside>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="mockups.js"></script>
+  </body>
+</html>
