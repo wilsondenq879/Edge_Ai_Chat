@@ -172,6 +172,23 @@ Open
   - inline code / code block
   - Mermaid block 容器
   - links
+- 所有模型文字入口（一般聊天、Agent Flow 步驟、Multi-Perspective 與自訂 Starter 討論）必須共用同一個 assistant rich-content renderer，不可各自直接 render 原始字串。
+- 如果模型把整份或其中一段一般回覆包在 `markdown`、`text`、`report`、其他文章標籤或可判斷為文章的無標籤 code fence，顯示層必須依內容結構拆掉外層 fence 再 render；真正的程式碼 fence 不可拆除。
+- 已知的文章 fence 在串流尚未收到 closing fence 時也要先拆除 opening marker，避免生成途中短暫退回原始 Markdown；已知程式語言仍維持 code block。
+- Markdown 表格各列之間即使被模型插入多餘空行、漏掉尾端 `|`，或因長欄位被拆成多個實體文字行，顯示層也要依表頭欄數合併與補齊，再正規化成可 render 的連續表格列。
+- 表格容器不可撐寬 assistant message；儲存格使用固定欄位配置並允許長文字自然換行，必要時只在表格容器內水平捲動。
+
+## 下一步建議選單
+
+- assistant 回覆末尾若包含「下一步建議」或同義的 follow-up 區塊，介面要把 2–5 個編號建議轉成直向按鈕選單。
+- 原始的編號清單、引導句與結尾詢問不應和按鈕重複顯示。
+- 每個按鈕包含順序編號、完整建議文字與前進箭頭。
+- 按鈕標籤只顯示可閱讀文字；需移除 `**bold**`、inline code 與 Markdown link 語法，連結保留名稱但不塞入長網址。
+- 點選後立即把該建議作為下一題送出，不要求使用者複製、貼上或再次按送出。
+- 送出時聊天區顯示簡短建議文字；實際 prompt 要保留「延續上一則回答」的上下文。
+- 模型生成期間，既有下一步按鈕必須停用，避免重複送出。
+- 一般聊天與 Multi-Perspective 的下一步按鈕都要能回到正確來源內容擷取動作，避免顯示成按鈕後無法送出。
+- 深色與淺色主題都要保有清楚的 hover、focus 與 disabled 狀態。
 
 ## Flow Chart
 

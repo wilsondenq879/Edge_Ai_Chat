@@ -3,6 +3,8 @@
   --ollama-ui-font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ollama-mono-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --ollama-host-scale: 1;
+  --ollama-chat-font-size: 12px;
+  --ollama-chat-line-height: 1.68;
   position: fixed;
   top: 50%;
   right: 14px;
@@ -26,9 +28,26 @@ html.ollama-quick-page-split-layout {
 html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
   box-sizing: border-box !important;
   width: calc(100vw - var(--ollama-quick-split-pane-width, 430px)) !important;
+  margin-left: 0 !important;
+  margin-right: var(--ollama-quick-split-pane-width, 430px) !important;
   min-width: 0 !important;
   max-width: calc(100vw - var(--ollama-quick-split-pane-width, 430px)) !important;
   overflow-x: hidden !important;
+}
+
+html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout > :not(script):not(style):not(link) {
+  min-width: 0 !important;
+  max-width: calc(100vw - var(--ollama-quick-split-pane-width, 430px)) !important;
+}
+
+#ollama-quick-chat-host[data-chat-font-size="medium"] {
+  --ollama-chat-font-size: 14px;
+  --ollama-chat-line-height: 1.7;
+}
+
+#ollama-quick-chat-host[data-chat-font-size="large"] {
+  --ollama-chat-font-size: 16px;
+  --ollama-chat-line-height: 1.72;
 }
 
 .ollama-quick-shell {
@@ -375,6 +394,56 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 
 .ollama-quick-controls {
   flex-direction: column;
+}
+
+.ollama-quick-evidence-control {
+  display: grid;
+  gap: 7px;
+  padding: 10px 11px;
+  border: 1px solid rgba(154, 176, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.ollama-quick-evidence-control.is-active {
+  border-color: rgba(98, 236, 184, 0.34);
+  background: linear-gradient(135deg, rgba(39, 128, 108, 0.2), rgba(54, 112, 156, 0.14));
+  box-shadow: inset 0 0 0 1px rgba(98, 236, 184, 0.06);
+}
+
+.ollama-quick-evidence-control-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #d9e7fb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ollama-quick-evidence-toggle {
+  min-width: 52px;
+  padding: 5px 9px;
+  border: 1px solid rgba(154, 176, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(225, 235, 249, 0.78);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ollama-quick-evidence-toggle.is-active {
+  border-color: rgba(98, 236, 184, 0.46);
+  background: rgba(35, 144, 112, 0.34);
+  color: #c8ffe8;
+}
+
+.ollama-quick-evidence-control-hint {
+  color: rgba(205, 221, 243, 0.64);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .ollama-quick-select {
@@ -938,6 +1007,56 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
   padding: 12px 16px 0;
 }
 
+.ollama-quick-evidence-quick-toggle {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(245, 245, 239, 0.12);
+  border-radius: 999px;
+  background: rgba(245, 245, 239, 0.05);
+  color: rgba(245, 245, 239, 0.62);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+#ollama-quick-chat-host.is-panel-open:not(.is-panel-maximized) .ollama-quick-evidence-quick-toggle {
+  display: inline-flex;
+}
+
+.ollama-quick-evidence-quick-toggle:hover,
+.ollama-quick-evidence-quick-toggle:focus-visible {
+  border-color: rgba(126, 233, 255, 0.3);
+  background: rgba(126, 233, 255, 0.09);
+  color: #f4fbff;
+  outline: none;
+}
+
+.ollama-quick-evidence-quick-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(245, 245, 239, 0.34);
+  box-shadow: 0 0 0 2px rgba(245, 245, 239, 0.06);
+}
+
+.ollama-quick-evidence-quick-toggle.is-active {
+  border-color: rgba(98, 236, 184, 0.34);
+  background: rgba(35, 144, 112, 0.18);
+  color: #c8ffe8;
+}
+
+.ollama-quick-evidence-quick-toggle.is-active .ollama-quick-evidence-quick-dot {
+  background: #62ecb8;
+  box-shadow: 0 0 0 2px rgba(98, 236, 184, 0.12);
+}
+
 .ollama-quick-browser-context {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1408,8 +1527,12 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 .ollama-quick-status {
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   color: #d8e7ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ollama-quick-status-indicator {
@@ -1707,9 +1830,10 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 .ollama-quick-message-body {
-  font-size: 13px;
-  line-height: 1.58;
+  font-size: var(--ollama-chat-font-size);
+  line-height: var(--ollama-chat-line-height);
   color: #f5f9ff;
+  white-space: normal;
 }
 
 .ollama-quick-message-body,
@@ -1720,6 +1844,134 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 .ollama-quick-message-body p {
   min-height: 0;
   line-height: inherit;
+}
+
+.ollama-quick-message-followups {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 13px;
+  border: 1px solid rgba(103, 191, 255, 0.2);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(60, 139, 221, 0.12), rgba(20, 31, 52, 0.18)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 12px 30px rgba(0, 0, 0, 0.12);
+  white-space: normal;
+}
+
+.ollama-quick-message-followups-head {
+  display: grid;
+  gap: 3px;
+}
+
+.ollama-quick-message-followups-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f4f9ff;
+  font-size: max(13px, var(--ollama-chat-font-size));
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.ollama-quick-message-followups-title span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ollama-quick-message-followups-hint {
+  color: rgba(220, 233, 252, 0.68);
+  font-size: max(11px, calc(var(--ollama-chat-font-size) - 2px));
+  line-height: 1.45;
+}
+
+.ollama-quick-message-followups-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ollama-quick-followup-action {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid rgba(132, 194, 255, 0.2);
+  border-radius: 13px;
+  background:
+    linear-gradient(135deg, rgba(58, 130, 213, 0.15), rgba(62, 83, 132, 0.1)),
+    rgba(255, 255, 255, 0.055);
+  color: #edf6ff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.ollama-quick-followup-action:hover,
+.ollama-quick-followup-action:focus-visible {
+  border-color: rgba(108, 207, 255, 0.55);
+  background:
+    linear-gradient(135deg, rgba(51, 155, 237, 0.24), rgba(82, 113, 182, 0.17)),
+    rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 3px rgba(84, 181, 255, 0.1),
+    0 10px 22px rgba(0, 89, 165, 0.14);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.ollama-quick-followup-action:active {
+  transform: translateY(0);
+}
+
+.ollama-quick-followup-action:disabled {
+  cursor: wait;
+  opacity: 0.48;
+  transform: none;
+}
+
+.ollama-quick-followup-action-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border: 1px solid rgba(127, 211, 255, 0.25);
+  border-radius: 9px;
+  background: rgba(82, 174, 255, 0.12);
+  color: #a8e5ff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.ollama-quick-followup-action-label {
+  min-width: 0;
+  color: #f4f8ff;
+  font-size: max(12px, calc(var(--ollama-chat-font-size) - 1px));
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ollama-quick-followup-action-arrow {
+  justify-self: center;
+  color: rgba(157, 221, 255, 0.82);
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.ollama-quick-followup-action:hover .ollama-quick-followup-action-arrow,
+.ollama-quick-followup-action:focus-visible .ollama-quick-followup-action-arrow {
+  transform: translateX(2px);
 }
 
 .ollama-quick-sent-attachments {
@@ -1784,15 +2036,24 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 .rendered-markdown h1 {
-  font-size: 18px;
+  font-size: calc(var(--ollama-chat-font-size) + 5px);
 }
 
 .rendered-markdown h2 {
-  font-size: 16px;
+  font-size: calc(var(--ollama-chat-font-size) + 3px);
 }
 
 .rendered-markdown h3 {
-  font-size: 14px;
+  font-size: calc(var(--ollama-chat-font-size) + 1px);
+}
+
+.ollama-quick-heading-emoji {
+  display: inline-block;
+  margin-right: 0.42em;
+  font-size: 0.92em;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: 0.04em;
 }
 
 .rendered-markdown p,
@@ -1822,7 +2083,7 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
   color: #f8fbff !important;
   color: #eef7ff;
   font-family: var(--ollama-mono-font) !important;
-  font-size: 12px;
+  font-size: max(11px, calc(var(--ollama-chat-font-size) - 1px));
 }
 
 .rendered-markdown pre {
@@ -1944,6 +2205,170 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 
 .rendered-markdown br {
   color: inherit !important;
+}
+
+.ollama-quick-evidence-ref {
+  display: inline-grid;
+  place-items: center;
+  min-width: 21px;
+  height: 21px;
+  margin: 0 2px;
+  padding: 0 6px;
+  border: 1px solid rgba(98, 236, 184, 0.46);
+  border-radius: 999px;
+  background: rgba(35, 144, 112, 0.2);
+  color: #bfffe2 !important;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  vertical-align: 0.12em;
+}
+
+.ollama-quick-evidence-ref.is-unverified {
+  border-color: rgba(255, 181, 90, 0.48);
+  background: rgba(173, 105, 34, 0.2);
+  color: #ffd6a3 !important;
+}
+
+.ollama-quick-evidence-ref:hover,
+.ollama-quick-evidence-ref:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(98, 236, 184, 0.12);
+}
+
+.ollama-quick-evidence-panel {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 11px;
+  border: 1px solid rgba(98, 236, 184, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(25, 75, 70, 0.3), rgba(18, 34, 54, 0.52));
+}
+
+.ollama-quick-evidence-panel.is-missing {
+  border-color: rgba(255, 181, 90, 0.26);
+  background: rgba(105, 68, 30, 0.18);
+}
+
+.ollama-quick-evidence-head,
+.ollama-quick-evidence-title,
+.ollama-quick-evidence-card-top,
+.ollama-quick-evidence-source {
+  display: flex;
+  align-items: center;
+}
+
+.ollama-quick-evidence-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ollama-quick-evidence-title {
+  gap: 6px;
+  color: #d7ffed;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.ollama-quick-evidence-summary {
+  color: rgba(205, 239, 226, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ollama-quick-evidence-list {
+  display: grid;
+  gap: 7px;
+}
+
+.ollama-quick-evidence-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgba(98, 236, 184, 0.18);
+  border-radius: 11px;
+  background: rgba(4, 14, 24, 0.34);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.ollama-quick-evidence-card:hover,
+.ollama-quick-evidence-card:focus-visible {
+  border-color: rgba(98, 236, 184, 0.42);
+  background: rgba(20, 71, 64, 0.34);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.ollama-quick-evidence-card.is-unverified {
+  border-color: rgba(255, 181, 90, 0.22);
+}
+
+.ollama-quick-evidence-card-top {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ollama-quick-evidence-card-id {
+  color: #9effd0;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ollama-quick-evidence-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(201, 241, 225, 0.72);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.ollama-quick-evidence-card.is-unverified .ollama-quick-evidence-card-id,
+.ollama-quick-evidence-card.is-unverified .ollama-quick-evidence-status {
+  color: #ffd09a;
+}
+
+.ollama-quick-evidence-quote {
+  color: #f1f8ff;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ollama-quick-evidence-source {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(183, 207, 230, 0.62);
+  font-size: 9px;
+}
+
+.ollama-quick-evidence-source span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ollama-quick-evidence-missing {
+  color: #ffd3a3;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.edge-ai-evidence-target {
+  position: relative !important;
+  outline: 3px solid rgba(36, 210, 143, 0.92) !important;
+  outline-offset: 4px !important;
+  border-radius: 4px !important;
+  background-color: rgba(78, 229, 164, 0.2) !important;
+  box-shadow: 0 0 0 8px rgba(36, 210, 143, 0.12), 0 10px 30px rgba(0, 0, 0, 0.2) !important;
+  transition: outline-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease !important;
 }
 
 .ollama-quick-compose {
@@ -2515,6 +2940,34 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
   color: rgba(34, 64, 90, 0.8);
 }
 
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-control {
+  border-color: rgba(57, 108, 137, 0.16);
+  background: rgba(234, 244, 249, 0.78);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-control.is-active,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-panel {
+  border-color: rgba(26, 143, 105, 0.24);
+  background: linear-gradient(145deg, rgba(225, 248, 239, 0.94), rgba(236, 246, 252, 0.94));
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-control-top,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-title,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quote {
+  color: #173c36;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-control-hint,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-summary,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-source,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-status {
+  color: rgba(38, 77, 83, 0.7);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-card {
+  background: rgba(255, 255, 255, 0.76);
+}
+
 #ollama-quick-chat-host[data-theme="light"] .ollama-quick-starter-custom-mark {
   color: rgba(70, 104, 133, 0.72);
 }
@@ -2556,6 +3009,29 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 
 #ollama-quick-chat-host[data-theme="light"] .ollama-quick-status-indicator {
   background: rgba(56, 173, 226, 0.35);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quick-toggle {
+  border-color: rgba(57, 108, 137, 0.16);
+  background: rgba(234, 244, 249, 0.72);
+  color: rgba(34, 64, 90, 0.72);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quick-toggle:hover,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quick-toggle:focus-visible {
+  border-color: rgba(56, 173, 226, 0.36);
+  background: rgba(220, 241, 252, 0.86);
+  color: #173c52;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quick-toggle.is-active {
+  border-color: rgba(26, 143, 105, 0.28);
+  background: rgba(225, 248, 239, 0.94);
+  color: #176f55;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-evidence-quick-toggle.is-active .ollama-quick-evidence-quick-dot {
+  background: #1a8f69;
 }
 
 #ollama-quick-chat-host[data-theme="light"] .ollama-quick-messages {
@@ -2656,6 +3132,60 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 #ollama-quick-chat-host[data-theme="light"] .ollama-quick-markdown-table td {
   border-color: rgba(106, 150, 191, 0.12);
   color: #21425d !important;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-message-followups {
+  border-color: rgba(58, 143, 198, 0.22);
+  background:
+    linear-gradient(145deg, rgba(220, 242, 255, 0.74), rgba(239, 247, 255, 0.58)),
+    rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 12px 26px rgba(53, 88, 119, 0.08);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-message-followups-title {
+  color: #173a56 !important;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-message-followups-hint {
+  color: rgba(35, 68, 96, 0.64) !important;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action {
+  border-color: rgba(73, 148, 201, 0.22);
+  background:
+    linear-gradient(135deg, rgba(227, 244, 255, 0.86), rgba(242, 248, 253, 0.74)),
+    rgba(255, 255, 255, 0.76);
+  color: #173a56;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 7px 16px rgba(53, 88, 119, 0.06);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action:hover,
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action:focus-visible {
+  border-color: rgba(45, 132, 187, 0.48);
+  background:
+    linear-gradient(135deg, rgba(210, 238, 255, 0.96), rgba(230, 246, 255, 0.9)),
+    rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 0 0 3px rgba(91, 175, 228, 0.11),
+    0 10px 22px rgba(53, 88, 119, 0.1);
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action-index {
+  border-color: rgba(45, 132, 187, 0.24);
+  background: rgba(205, 236, 255, 0.72);
+  color: #1379a5 !important;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action-label {
+  color: #173a56 !important;
+}
+
+#ollama-quick-chat-host[data-theme="light"] .ollama-quick-followup-action-arrow {
+  color: #1887b4 !important;
 }
 
 #ollama-quick-chat-host[data-theme="light"] .ollama-quick-starter-route-banner,
@@ -3064,10 +3594,10 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 #ollama-quick-chat-host.is-view-split.is-panel-open:not(.is-panel-maximized) .ollama-quick-messages {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: stretch;
   margin: 8px 16px 0;
-  padding: 0;
+  padding: 10px 2px 6px 0;
   border-top: 0;
 }
 
@@ -5403,8 +5933,8 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 .ollama-quick-panel.is-maximized .ollama-quick-message-body {
-  font-size: 13px;
-  line-height: 1.64;
+  font-size: var(--ollama-chat-font-size);
+  line-height: var(--ollama-chat-line-height);
 }
 
 .ollama-quick-panel.is-maximized .ollama-quick-message.is-user {
@@ -5571,18 +6101,34 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
 }
 
 .ollama-quick-message.is-assistant .ollama-quick-message-body.rendered-markdown > * + * {
-  margin-top: 14px;
-  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.ollama-quick-message.is-assistant .ollama-quick-message-body.rendered-markdown > h1:not(:first-child),
+.ollama-quick-message.is-assistant .ollama-quick-message-body.rendered-markdown > h2:not(:first-child),
+.ollama-quick-message.is-assistant .ollama-quick-message-body.rendered-markdown > h3:not(:first-child) {
+  margin-top: 18px;
+  padding-top: 13px;
   border-top: 1px solid rgba(143, 221, 255, 0.12);
 }
 
+.ollama-quick-message.is-assistant .rendered-markdown li + li {
+  margin-top: 5px;
+}
+
 .ollama-quick-table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   margin: 0 0 12px;
+  border-radius: 12px;
+  overscroll-behavior-inline: contain;
 }
 
 .ollama-quick-markdown-table {
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   border: 1px solid rgba(126, 233, 255, 0.18);
   border-radius: 12px;
@@ -5597,8 +6143,12 @@ html.ollama-quick-page-split-layout body.ollama-quick-page-split-layout {
   text-align: left;
   vertical-align: top;
   color: #f5f9ff !important;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--ollama-chat-font-size);
+  line-height: var(--ollama-chat-line-height);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
 }
 
 .ollama-quick-markdown-table th {

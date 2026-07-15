@@ -3,6 +3,7 @@ const MAX_PAGE_TEXT = 8000;
 const MAX_PDF_PAGE_TEXT = 24000;
 const MAX_SELECTION_TEXT = 2000;
 const MAX_PAGE_IMAGE_CANDIDATES = 6;
+const MAX_DOCUMENT_SOURCE_IMAGE_CANDIDATES = 12;
 const MAX_FRAME_DEPTH = 2;
 const MAX_CONTEXT_BLOCKS = 24;
 const MAX_INCLUDED_GITHUB_SOURCES = 5;
@@ -28,6 +29,7 @@ const SPLIT_LAYOUT_MIN_VIEWPORT_WIDTH_PX = 900;
 const LAUNCHER_POSITION_KEY = "ollamaLauncherPosition";
 const PANEL_VIEW_MODE_KEY = "ollamaPanelViewMode";
 const SPLIT_PANE_WIDTH_KEY = "ollamaSplitPaneWidth";
+const CHAT_FONT_SIZE_OPTIONS = new Set(["small", "medium", "large"]);
 const LAUNCHER_DRAG_THRESHOLD_PX = 6;
 const LAUNCHER_VIEWPORT_MARGIN_PX = 12;
 const LAUNCHER_DEFAULT_RIGHT_OFFSET_PX = 14;
@@ -291,6 +293,7 @@ const LARGE_VIEW_STARTER_KEYS = new Set([
   "landingPageBuilder",
   "landingHtml",
   "landingPowerPoint",
+  "multiPageWordReport",
   "batchUrlQaWorkflow",
   "createAgentFlow",
   "createCustomStarter",
@@ -382,6 +385,7 @@ let pendingPowerPointLogo = null;
 let pendingSuggestedStarterAction = null;
 let activeSearchCompositionRole = "";
 let confirmDialogState = null;
+let evidenceHighlightTimer = 0;
 const PERSPECTIVE_PREVIEW_LENGTH = 180;
 const HTML_LAYOUT_GUARD_STYLE_ID = "edge-ai-chat-layout-guard";
 const HTML_MERMAID_RUNTIME_SCRIPT_ID = "edge-ai-chat-mermaid-runtime";
@@ -926,7 +930,8 @@ const BUILTIN_STARTER_DESCRIPTIONS = {
     docExecutiveBrief: "把文件濃縮成適合快速決策閱讀的高層摘要。",
     docOutline: "把目前內容重新整理成結構清楚的大綱。",
     landingHtml: "把目前內容改寫成可直接開啟的單頁 HTML。",
-    landingPowerPoint: "把目前內容整理成可下載的 PowerPoint 簡報。",
+    landingPowerPoint: "整合目前頁面與最多五個分頁，建立有來源、有圖片、故事線一致的 PowerPoint 簡報。",
+    multiPageWordReport: "把目前頁面、加入的分頁與文件整合成有圖片、摘要、章節與來源清單的 Word 報告。",
     investmentProposalBuilder: "開啟獨立視窗，填三個欄位後直接生成附表6與附表7的 Word 企畫書。",
     bullVsBear: "把議題拆成看多與看空兩邊的論點一起比較。",
     catalystMap: "整理推動事件、觸發因子與可能影響路徑。",
@@ -990,7 +995,8 @@ const BUILTIN_STARTER_DESCRIPTIONS = {
     docExecutiveBrief: "Turn the document into a concise, decision-friendly brief.",
     docOutline: "Reorganize the current content into a clearer outline.",
     landingHtml: "Turn the current material into a single downloadable HTML page.",
-    landingPowerPoint: "Turn the current material into a downloadable PowerPoint deck.",
+    landingPowerPoint: "Combine the current page and up to five added tabs into a coherent, source-backed visual PowerPoint deck.",
+    multiPageWordReport: "Combine the current page, added tabs, and documents into an illustrated Word report with sections and traceable sources.",
     investmentProposalBuilder: "Open a standalone window, fill three fields, and generate a Word draft for Taiwan investment tax-credit proposal forms 6 and 7.",
     bullVsBear: "Compare the strongest bullish and bearish arguments side by side.",
     catalystMap: "Map the events, triggers, and likely impact paths around a topic.",
@@ -1031,15 +1037,15 @@ const CUSTOM_STARTER_SCOPE_ALIASES = {
   finance: "market",
 };
 const PAGE_COPILOT_STARTERS = {
-  article: ["pageSummary", "landingHtml", "landingPowerPoint", "articleTimeline", "articleBiasCheck", "reflectionArticle", "multiPerspective"],
+  article: ["pageSummary", "landingHtml", "landingPowerPoint", "multiPageWordReport", "articleTimeline", "articleBiasCheck", "reflectionArticle", "multiPerspective"],
   code: ["codeExplain", "codeRiskReview", "codeTeachBack", "multiPerspective"],
   email: ["emailSummary", "translatePage"],
   github: ["githubRepoPurpose", "githubSummary", "githubReviewFocus", "githubNextSteps"],
   collaboration: ["chatWeeklyDigest", "chatActionItems", "pageSummary"],
-  document: ["pdfDeepSummary", "docExecutiveBrief", "landingHtml", "landingPowerPoint", "landingPageBuilder", "docOutline", "pageSummary", "translatePage"],
+  document: ["pdfDeepSummary", "docExecutiveBrief", "landingHtml", "landingPowerPoint", "multiPageWordReport", "landingPageBuilder", "docOutline", "pageSummary", "translatePage"],
   market: ["bullVsBear", "catalystMap", "pricedIn", "tickerImpact", "pageSummary"],
   entertainment: ["pageSummary", "memeCaption", "xPost", "templateIdeas", "lowIqMeme"],
-  generic: ["pageSummary", "landingPageBuilder", "landingHtml", "landingPowerPoint", "translatePage", "multiPerspective"],
+  generic: ["pageSummary", "landingPageBuilder", "landingHtml", "landingPowerPoint", "multiPageWordReport", "translatePage", "multiPerspective"],
 };
 const CONTENT_I18N = {
   "zh-TW": {
@@ -1097,16 +1103,20 @@ const CONTENT_I18N = {
     downloadMarkdown: "下載 MD",
     downloadHtml: "下載 HTML",
     downloadPowerPoint: "下載 PPTX",
+    downloadWordReport: "下載 DOCX",
     loadLatestChat: "載入最近",
     exportMarkdownSuccess: "已下載 Markdown：{file}",
     exportMarkdownFailed: "下載 Markdown 失敗。",
     htmlDownloaded: "已下載 HTML：{file}",
     exportHtmlFailed: "下載 HTML 失敗。",
     powerPointDownloaded: "已下載 PowerPoint：{file}",
+    wordReportDownloaded: "已下載 Word 報告：{file}",
     exportPowerPointFailed: "下載 PowerPoint 失敗。",
+    exportWordReportFailed: "下載 Word 報告失敗。",
     noConversationToExport: "目前沒有可匯出的對話內容。",
     noHtmlToExport: "這則回覆沒有可下載的 HTML。",
     noPowerPointToExport: "這則回覆沒有可下載的 PowerPoint。",
+    noWordReportToExport: "這則回覆沒有可下載的 Word 報告。",
     saveMarkdownToFolderSuccess: "已儲存對話 Markdown：{file}",
     workFolderNotConfigured: "尚未設定本機資料夾。",
     workFolderPermissionMissing: "本機資料夾權限失效，請到設定重新選擇一次。",
@@ -1226,7 +1236,8 @@ const CONTENT_I18N = {
     starterDraftSaved: "已儲存",
     starterDraftImportHint: "請將 JSON 貼入設定中的「教 AI 一個新技能」內建立。",
     starterDraftActionHint: "貼到 Settings 內的「教 AI 一個新技能」",
-    messageFollowupTitle: "直接繼續",
+    messageFollowupTitle: "下一步建議",
+    messageFollowupHint: "點選一項，直接作為下一題送出",
     messageFollowupPrompt: "請直接延續你上一則回覆，幫我完成這個版本：{action}\n\n請直接輸出完整結果，不要先解釋你會怎麼做。",
     messageFollowupSkillConfirm: "這個動作已經跑完，要不要把它整理成 custom skill？",
     messageFollowupSkillConfirmAction: "加入 custom skill",
@@ -1337,6 +1348,22 @@ const CONTENT_I18N = {
     modelSelected: "目前模型：{model}",
     modelSelectFailed: "選擇模型失敗。",
     pageContextModeUpdated: "已更新網頁內容加入模式：{mode}。",
+    evidenceModeLabel: "Evidence Mode",
+    evidenceModeQuickLabel: "證據",
+    evidenceModeHint: "要求回答附上目前頁面的逐字證據，點擊引用可跳回原文。",
+    evidenceModeOn: "開啟",
+    evidenceModeOff: "關閉",
+    evidenceModeEnabledStatus: "Evidence Mode 已開啟；目前頁面會固定加入 context。",
+    evidenceModeDisabledStatus: "Evidence Mode 已關閉。",
+    evidenceTitle: "頁面證據",
+    evidenceVerifiedSummary: "已驗證 {verified}/{total}",
+    evidenceVerified: "已在來源快照驗證",
+    evidenceUnverified: "無法在來源快照驗證",
+    evidenceMissing: "這則回答沒有提供可驗證的頁面引文，請不要把它視為已查證。",
+    evidenceSourceCurrentPage: "目前頁面",
+    evidenceJumpToSource: "跳到原文",
+    evidenceLocated: "已跳到證據 {id}。",
+    evidenceNotFound: "目前頁面找不到證據 {id}；頁面內容可能已變更。",
     includeRepoOrFile: "加入Github資料",
     changeIncludedSource: "更換來源",
     clearIncludedSource: "清除來源",
@@ -1473,7 +1500,8 @@ const CONTENT_I18N = {
     starter_docExecutiveBrief: "整理決策摘要",
     starter_docOutline: "重整文件大綱",
     starter_landingHtml: "將網頁內容整理成html簡報",
-    starter_landingPowerPoint: "將網頁內容整理成PowerPoint",
+    starter_landingPowerPoint: "多網頁圖文 PowerPoint",
+    starter_multiPageWordReport: "多網頁圖文 Word 報告",
     starter_bullVsBear: "多空觀點分析",
     starter_catalystMap: "整理事件催化因素",
     starter_pricedIn: "判斷是否已反映在價格",
@@ -1509,7 +1537,8 @@ const CONTENT_I18N = {
     investmentProposalBuilderOpened: "投資提案文件視窗已開啟。",
     investmentProposalBuilderOpenFailed: "無法開啟投資提案文件視窗。",
     landingHtmlPrompt: "請根據目前頁面、可見文字、參考資料、加入的分頁內容與提供的圖片來源，產出一份可直接下載的 HTML，而且整體設計要明顯偏向『Apple keynote 風格啟發的投影片式單頁網站』，不是一般文章頁。要求：1. 只回覆單一 ```html``` code block，不要加前後說明 2. 輸出完整 HTML 文件，包含內嵌 CSS 3. 視覺方向請參考 Apple keynote 的簡報感：大膽留白、超大標題、短句、乾淨而克制的配色、高級感排版、大片圖片或色塊、精準的層次，但不要直接使用 Apple 商標或文案 4. 版面請做成一段一段像 slides 的 section，每個 section 聚焦一個重點，不要寫成密集長文 5. 優先做 5 到 8 個主要 section，桌機上有簡報感，手機上也要能順暢往下滑閱讀 6. 可使用 scroll-snap、sticky 區塊、巨大數字、左右分欄 hero、statement section、feature panels 等手法 7. 圖片一定要放在安全的 media 容器內，使用 max-width:100%、height:auto 或 object-fit:cover / contain，不能把文字欄擠到過窄造成逐字換行，也不能讓圖片撐破 grid 或 viewport 8. 任何雙欄排版都必須確保文字欄至少維持舒適閱讀寬度；如果圖片太大或畫面太窄，就自動改成上下堆疊，不要硬維持左右分欄 9. 若 CURRENT PAGE CONTEXT 或加入的分頁內容有 Image candidates，優先直接使用那些圖片 URL 當成 <img src>；不要生成新圖片、不要捏造不存在的圖片 URL 10. 若沒有可用圖片，就做成以排版、格線與色塊為主的版本 11. 內容必須忠於來源，不可補寫不存在的事實 12. 如果我加入了多個分頁，請先整合它們的共同主題與差異，再重新編排成一份一致的單頁簡報 13. HTML 需可直接在瀏覽器開啟，並適合桌機與手機閱讀 14. 如果需要供應鏈風險圖、趨勢圖、流程圖、比較圖、時間線等資訊圖表，請直接用 <pre class=\"mermaid\">...</pre> 輸出 Mermaid 圖，而不是寫 [圖表示意]、[視覺化] 這種佔位文字，也不要把圖表做成一般圖片 15. Mermaid 圖表必須根據來源資料編寫，節點與數值不要亂補；版面請保持簡潔可讀 16. 如果某一段需要抽象意象圖而來源沒有現成圖片，例如『全球連結與安全象徵』，可以放 <img data-edge-ai-image-query=\"global connection cyber security illustration\" alt=\"全球連結與安全象徵\" /> 這種查詢型圖片標記，查詢詞請用簡短英文，不要捏造 src URL 17. 有真實來源圖片時，一律優先使用來源圖片，不要改成搜尋型意象圖 18. 絕對不要輸出沒有可用 src 的 <img>；如果沒有真實圖片也不適合搜尋意象圖，就改用純版面色塊或 Mermaid，不要留下空圖片框。內容語言請使用{language}。",
-    landingPowerPointPrompt: "請根據目前頁面、可見文字、參考資料、加入的分頁內容與提供的圖片來源，產出一份可下載成 PowerPoint 的投影片規格。請嚴格遵守以下要求：1. 只回覆單一 ```json``` code block，不要加前後說明 2. JSON 根物件固定為 {\"title\": string, \"theme\": {...}, \"slides\": [...] } 3. `theme` 可包含 `backgroundColor`、`textColor`、`accentColor`，顏色請用 `#RRGGBB` 4. `slides` 請控制在 5 到 8 張，每張投影片盡量聚焦一個重點，不要塞長文 5. 每張 slide 只能使用這些欄位：`title`、`subtitle`、`body`、`bullets`、`imageUrl`、`imageAlt`、`notes`、`sourceUrl`、`layout` 6. `layout` 只能是 `title`、`content`、`image-left`、`image-right` 其中之一 7. `bullets` 必須是字串陣列，每點都要短而有資訊密度 8. 圖文並茂是 PowerPoint 的核心：只要 CURRENT PAGE CONTEXT 或加入的分頁內容有 Image candidates，至少 75% 的內容投影片必須使用真實圖片 URL 填入 `imageUrl`；不要只做純文字投影片 9. `imageUrl` 必須直接使用來源圖片 URL；不要捏造網址、不要生成新圖片、不要使用搜尋型或佔位圖片 10. 只有在完全沒有可用 Image candidates 時，才可以省略 `imageUrl` 並改用純文字投影片 11. 有圖片的投影片請優先使用 `image-left` 或 `image-right` layout，並把圖片分配到不同投影片 12. 內容必須忠於來源，不可補寫不存在的事實 13. 如果我加入了多個分頁，請先整合共同主題與差異，再整理成一致的簡報故事線 14. 若來源包含圖表、流程、時間線等複雜資訊，請把圖表重寫成簡潔文字重點與 bullets，不要輸出 Mermaid、不要輸出 HTML 15. 每張 slide 的 `title`、`subtitle`、`body`、`bullets`、`notes` 都請使用{language} 16. 請讓第一張像封面或 executive summary，最後一張像結論或 next steps 17. 若某張投影片沒有合適內容，就不要硬湊空洞句子。請只輸出合法 JSON。",
+    landingPowerPointPrompt: "請把目前頁面、可見文字、參考資料、加入的分頁內容與來源圖片整合成一份可下載的 PowerPoint 規格。請嚴格遵守：1. 只回覆單一 ```json``` code block，不要加前後說明 2. 根物件固定為 {\"title\": string, \"theme\": {...}, \"slides\": [...] } 3. `theme` 可包含 `backgroundColor`、`textColor`、`accentColor`，使用 `#RRGGBB` 4. `slides` 控制在 6 到 9 張；先建立共同主題與故事線，再安排各來源資訊，不要按網頁順序逐頁摘要 5. 每張 slide 只能使用 `title`、`subtitle`、`body`、`bullets`、`imageUrl`、`imageAlt`、`notes`、`sourceUrl`、`layout` 6. `layout` 只能是 `title`、`content`、`image-left`、`image-right` 7. `bullets` 必須是精簡、有資訊密度的字串陣列 8. 多來源時必須讓每個有實質內容的來源至少被一張投影片引用，並把對應原始網址填入 `sourceUrl`；有差異或衝突時要明確比較，不可混成沒有出處的結論 9. 只要來源提供 Image candidates，至少 75% 的內容投影片要使用最符合該頁主題的真實來源圖片 URL，不要只做純文字投影片 10. `imageUrl` 必須直接重用來源 URL；不可捏造、生成、搜尋或使用佔位圖片 11. 圖片要與投影片內容及 `sourceUrl` 對應，優先用 `image-left` 或 `image-right` 並避免連續重複同圖 12. 只有完全沒有可用圖片時才可省略 `imageUrl` 13. 內容必須忠於來源，不可補寫不存在的事實；無法確認的內容在 `notes` 標示 14. 圖表、流程與時間線請重寫成簡潔重點，不要輸出 Mermaid 或 HTML 15. `title`、`subtitle`、`body`、`bullets`、`notes` 使用{language} 16. 第一張是封面兼 executive summary，倒數第二張彙整跨來源洞察或比較，最後一張是結論與 next steps 17. 不要為湊頁數加入空洞句子。只輸出合法 JSON。",
+    multiPageWordReportPrompt: "請把目前頁面、可見文字、加入的分頁、加入的文件與來源圖片整合成一份可下載的圖文 Word 報告規格。請嚴格遵守：1. 只回覆單一 ```json``` code block，不要加前後說明 2. 根物件固定為 {\"title\": string, \"subtitle\": string, \"executiveSummary\": string, \"sections\": [...], \"sources\": [...] } 3. 每個 section 只能使用 `heading`、`summary`、`paragraphs`、`bullets`、`imageUrl`、`imageAlt`、`sourceUrl` 4. `paragraphs` 與 `bullets` 都必須是字串陣列 5. 建立 5 到 9 個有明確目的的章節，整合共同主題、差異、重要證據與可行結論，不要只是依序貼上每個網頁的摘要 6. 多來源時，每個有實質內容的來源至少要出現在一個 section 的 `sourceUrl` 或最後 `sources` 清單；`sources` 每項固定為 {\"title\": string, \"url\": string} 7. 內容必須忠於來源，不可捏造事實、數字或引言；來源有衝突時要明確指出 8. 只要來源有 Image candidates，請把最相關的真實圖片 URL 配給適合的章節；`imageUrl` 不可捏造、不可搜尋、不可使用佔位圖片 9. 圖片必須與該章節內容及來源網址對應，同一張圖不要重複使用 10. `executiveSummary` 用 2 到 4 段完整短文；每章以清楚摘要開頭，再用短段落與 bullets 提供細節 11. 最後一章應整理跨來源結論、建議或下一步 12. 所有可見文字使用{language}，網址保持原樣。只輸出合法 JSON。",
     translationPrompt: "請把這個網頁內容翻譯成{language}。",
     reflectionArticlePrompt: "請依照這個網頁內容生成一篇心得文。先簡短整理重點，再用自然、有觀點的語氣寫出閱讀心得、啟發與可延伸思考。請使用{language}輸出，避免只是逐段重述原文。",
     emailSummaryPrompt: "請摘要目前可見的 email 內容。若這是單封信，請整理：1. 主旨與背景 2. 關鍵重點 3. 需要回覆或跟進的事項 4. 重要的人名、時間、連結或附件線索。若這是信件串，請整理 thread 的最新狀態與待處理事項。若目前畫面其實是撰寫中的草稿，請改成摘要草稿目的、核心訊息與仍缺少的資訊。若頁面只顯示部分內容，請明確說明你是根據可見內容整理。請使用{language}回答。",
@@ -1776,16 +1805,20 @@ const CONTENT_I18N = {
     downloadMarkdown: "Download MD",
     downloadHtml: "Download HTML",
     downloadPowerPoint: "Download PPTX",
+    downloadWordReport: "Download DOCX",
     loadLatestChat: "Load latest",
     exportMarkdownSuccess: "Downloaded Markdown: {file}",
     exportMarkdownFailed: "Failed to download Markdown.",
     htmlDownloaded: "Downloaded HTML: {file}",
     exportHtmlFailed: "Failed to download HTML.",
     powerPointDownloaded: "Downloaded PowerPoint: {file}",
+    wordReportDownloaded: "Downloaded Word report: {file}",
     exportPowerPointFailed: "Failed to download PowerPoint.",
+    exportWordReportFailed: "Failed to download the Word report.",
     noConversationToExport: "There is no conversation to export yet.",
     noHtmlToExport: "This response does not contain downloadable HTML.",
     noPowerPointToExport: "This response does not contain downloadable PowerPoint.",
+    noWordReportToExport: "This response does not contain a downloadable Word report.",
     saveMarkdownToFolderSuccess: "Saved chat Markdown: {file}",
     workFolderNotConfigured: "No local work folder is configured yet.",
     workFolderPermissionMissing: "Local work folder permission is unavailable. Please reselect the folder in Settings.",
@@ -1890,7 +1923,8 @@ const CONTENT_I18N = {
     starterDraftSaved: "Saved",
     starterDraftImportHint: "Paste this JSON into Teach Your AI a New Skill in Settings to create it.",
     starterDraftActionHint: "Paste into Teach Your AI a New Skill in Settings",
-    messageFollowupTitle: "Continue With",
+    messageFollowupTitle: "Suggested next steps",
+    messageFollowupHint: "Choose one to send it as your next question",
     messageFollowupPrompt: "Please continue directly from your previous reply and produce this version: {action}\n\nOutput the full result directly without first explaining what you will do.",
     messageFollowupSkillConfirm: "This follow-up is finished. Do you want to turn it into a custom skill?",
     messageFollowupSkillConfirmAction: "Add custom skill",
@@ -2016,6 +2050,22 @@ const CONTENT_I18N = {
     modelSelected: "Using model: {model}",
     modelSelectFailed: "Failed to select model.",
     pageContextModeUpdated: "Updated webpage context mode: {mode}.",
+    evidenceModeLabel: "Evidence Mode",
+    evidenceModeQuickLabel: "Evidence",
+    evidenceModeHint: "Require verbatim current-page evidence and jump back to the source from each citation.",
+    evidenceModeOn: "On",
+    evidenceModeOff: "Off",
+    evidenceModeEnabledStatus: "Evidence Mode enabled. The current page will be included on every turn.",
+    evidenceModeDisabledStatus: "Evidence Mode disabled.",
+    evidenceTitle: "Page evidence",
+    evidenceVerifiedSummary: "Verified {verified}/{total}",
+    evidenceVerified: "Verified in the source snapshot",
+    evidenceUnverified: "Not verified in the source snapshot",
+    evidenceMissing: "This answer did not provide verifiable page quotations; do not treat it as checked.",
+    evidenceSourceCurrentPage: "Current page",
+    evidenceJumpToSource: "Jump to source",
+    evidenceLocated: "Jumped to evidence {id}.",
+    evidenceNotFound: "Evidence {id} is no longer visible on this page; the page may have changed.",
     includeRepoOrFile: "Add source",
     changeIncludedSource: "Change source",
     clearIncludedSource: "Clear source",
@@ -2152,7 +2202,8 @@ const CONTENT_I18N = {
     starter_docExecutiveBrief: "Executive Brief",
     starter_docOutline: "Rebuild Document Outline",
     starter_landingHtml: "Make HTML",
-    starter_landingPowerPoint: "Make PowerPoint",
+    starter_landingPowerPoint: "Multi-page visual PowerPoint",
+    starter_multiPageWordReport: "Multi-page visual Word report",
     starter_bullVsBear: "Bull vs Bear",
     starter_catalystMap: "Catalyst Map",
     starter_pricedIn: "Priced In?",
@@ -2188,7 +2239,8 @@ const CONTENT_I18N = {
     investmentProposalBuilderOpened: "The investment proposal builder window is open.",
     investmentProposalBuilderOpenFailed: "Failed to open the investment proposal builder window.",
     landingHtmlPrompt: "Turn the current page, visible text, reference material, added browser-tab content, and any provided source images into a downloadable HTML document whose design feels clearly inspired by an Apple keynote-style one-page slide site rather than a normal article page. Requirements: 1. Reply with one complete ```html``` code block only, with no explanation before or after it 2. Output a full HTML document with inline CSS 3. The visual direction should feel keynote-like: generous whitespace, oversized headlines, concise copy, restrained premium color use, cinematic section composition, and polished typography, but do not use Apple trademarks or copy Apple marketing text 4. Build it as slide-like sections where each section carries one main point instead of dense paragraphs 5. Prefer around 5 to 8 major sections so it feels like a product keynote page or pitch deck on desktop while still scrolling smoothly on mobile 6. You may use scroll-snap, sticky panels, oversized numbers, split-layout heroes, statement sections, feature panels, and similar presentation-style techniques 7. Images must live inside safe media containers using max-width:100%, height:auto, and when needed object-fit:cover or contain; they must not squeeze text columns into unreadably narrow widths or break the grid / viewport 8. Any two-column layout must preserve a comfortable minimum reading width for text, and should collapse into a vertical stack whenever the image is too dominant or the viewport is too narrow 9. If CURRENT PAGE CONTEXT or added browser tabs include Image candidates, prefer using those source image URLs directly in <img src>; do not generate new images and do not invent image URLs 10. If no usable images are available, create a typography-first version driven by layout, grids, spacing, and color blocks 11. Stay faithful to the source material and do not invent facts 12. If I added multiple tabs, first synthesize their common theme and important differences, then turn them into one coherent slide-based page 13. The HTML should open directly in a browser and read well on desktop and mobile 14. If a section needs a risk map, timeline, process flow, comparison chart, trend chart, or similar information graphic, render it as Mermaid using <pre class=\"mermaid\">...</pre> instead of placeholder text like [diagram] or a generic image 15. Mermaid diagrams must be grounded in the provided source material; keep labels, nodes, and values accurate and readable 16. If a section benefits from symbolic imagery but no real source image exists, you may place an <img data-edge-ai-image-query=\"global connection cyber security illustration\" alt=\"Global connection and security symbol\" /> style query-image placeholder, using a short English search phrase and no fabricated src URL 17. Whenever real source images exist, always prefer those source images over search-based symbolic imagery 18. Never output an <img> without a usable src. If you do not have a real source image and a symbolic search image is not appropriate, replace the visual with Mermaid or a pure layout / color-block treatment instead of leaving an empty image frame. Write the content in {language}.",
-    landingPowerPointPrompt: "Turn the current page, visible text, reference material, added browser-tab content, and any provided source images into a PowerPoint-ready slide specification. Follow these rules strictly: 1. Reply with one complete ```json``` code block only, with no explanation before or after it 2. The root JSON object must be {\"title\": string, \"theme\": {...}, \"slides\": [...] } 3. `theme` may contain `backgroundColor`, `textColor`, and `accentColor`, each using `#RRGGBB` format 4. Keep the deck to about 5 to 8 slides, with each slide focused on one main point instead of dense prose 5. Each slide may use only these fields: `title`, `subtitle`, `body`, `bullets`, `imageUrl`, `imageAlt`, `notes`, `sourceUrl`, `layout` 6. `layout` must be one of `title`, `content`, `image-left`, or `image-right` 7. `bullets` must be an array of strings, with each point concise and meaningful 8. Visual slides are core to this PowerPoint feature: whenever CURRENT PAGE CONTEXT or added browser-tab content includes Image candidates, at least 75% of content slides must use real source image URLs in `imageUrl`; do not create a text-only deck 9. `imageUrl` must directly reuse a source image URL; do not invent URLs, generate new images, use search images, or use placeholders 10. Only omit `imageUrl` when there are no usable Image candidates at all 11. Slides with images should prefer `image-left` or `image-right` layout and distribute different images across different slides 12. Stay faithful to the source material and do not invent facts 13. If I added multiple tabs, synthesize their shared theme and differences before turning them into one coherent slide story 14. If the source includes charts, timelines, or process diagrams, rewrite them into concise slide text and bullets instead of Mermaid or HTML 15. Write every slide's `title`, `subtitle`, `body`, `bullets`, and `notes` in {language} 16. Make the first slide feel like a cover or executive summary, and the last slide feel like a conclusion or next steps 17. If a slide does not have enough grounded material, do not pad it with vague filler. Output valid JSON only.",
+    landingPowerPointPrompt: "Combine the current page, visible text, reference material, added browser tabs, and source images into a downloadable PowerPoint specification. Follow these rules strictly: 1. Reply with one complete ```json``` block only 2. The root must be {\"title\": string, \"theme\": {...}, \"slides\": [...] } 3. `theme` may contain `backgroundColor`, `textColor`, and `accentColor` in `#RRGGBB` 4. Create 6 to 9 slides around one shared narrative; organize by ideas and evidence rather than summarizing tabs one by one 5. Each slide may use only `title`, `subtitle`, `body`, `bullets`, `imageUrl`, `imageAlt`, `notes`, `sourceUrl`, `layout` 6. `layout` must be `title`, `content`, `image-left`, or `image-right` 7. `bullets` must be concise, information-dense strings 8. With multiple sources, every substantial source must be cited by at least one slide using its original URL in `sourceUrl`; compare disagreements explicitly instead of merging them into an unattributed conclusion 9. Whenever source Image candidates exist, at least 75% of content slides must use the most relevant real source image URL 10. `imageUrl` must directly reuse a supplied source URL; never invent, generate, search for, or substitute placeholder images 11. Match each image to the slide topic and `sourceUrl`, prefer image layouts, and avoid repeating the same image 12. Omit images only when no usable source image exists 13. Stay faithful to the sources; put uncertainty in `notes` 14. Rewrite charts, processes, and timelines into concise text and bullets, never Mermaid or HTML 15. Write visible slide text and notes in {language} 16. Use the first slide as a cover plus executive summary, the penultimate slide for cross-source insights or comparison, and the final slide for conclusions and next steps 17. Never add vague filler to reach a slide count. Output valid JSON only.",
+    multiPageWordReportPrompt: "Combine the current page, visible text, added browser tabs, added documents, and source images into a downloadable illustrated Word-report specification. Follow these rules strictly: 1. Reply with one complete ```json``` block only 2. The root must be {\"title\": string, \"subtitle\": string, \"executiveSummary\": string, \"sections\": [...], \"sources\": [...] } 3. Each section may use only `heading`, `summary`, `paragraphs`, `bullets`, `imageUrl`, `imageAlt`, `sourceUrl` 4. `paragraphs` and `bullets` must be arrays of strings 5. Create 5 to 9 purposeful sections that synthesize shared themes, differences, evidence, and actionable conclusions instead of listing page summaries in tab order 6. Every substantial source must appear in at least one section's `sourceUrl` or in `sources`; each source must be {\"title\": string, \"url\": string} 7. Stay faithful to the sources and never invent facts, figures, or quotes; explicitly describe conflicts 8. Whenever Image candidates exist, assign relevant real source image URLs to suitable sections; never invent, search for, or use placeholder images 9. Match each image to its section and source URL and never repeat an image 10. Write `executiveSummary` as two to four short paragraphs; begin each section with a clear summary, followed by compact paragraphs and bullets 11. Use the final section for cross-source conclusions, recommendations, or next steps 12. Write all visible text in {language} and preserve URLs. Output valid JSON only.",
     translationPrompt: "Translate this page into {language}.",
     reflectionArticlePrompt: "Write a reflection article based on this page. Start with a brief recap of the key points, then write thoughtful takeaways, insights, and possible follow-up ideas in a natural voice. Respond in {language}, and do not just restate the page section by section.",
     emailSummaryPrompt: "Summarize the currently visible email content. If this is a single email, cover: 1. Subject and background 2. Key points 3. Needed replies or follow-ups 4. Important people, dates, links, or attachment clues. If this is a thread, summarize the latest state of the conversation and outstanding actions. If the visible page is actually a draft email, summarize the draft's purpose, main message, and what information is still missing. If only part of the email is visible, say clearly that the summary is based only on visible content. Respond in {language}.",
@@ -5617,9 +5669,7 @@ function getActiveStarterKeys(pageCopilot = currentPageCopilot) {
     nextKeys = [...nextKeys, "translatePage"];
   }
 
-  nextKeys = [...nextKeys, "investmentProposalBuilder", "landingPageBuilder", "batchUrlQaWorkflow", "createAgentFlow", "createCustomStarter"];
-
-  nextKeys = [...nextKeys, "investmentProposalBuilder"];
+  nextKeys = [...nextKeys, "multiPageWordReport", "investmentProposalBuilder", "landingPageBuilder", "batchUrlQaWorkflow", "createAgentFlow", "createCustomStarter"];
   return nextKeys.filter((starterKey, index) => nextKeys.indexOf(starterKey) === index);
 }
 
@@ -5647,6 +5697,7 @@ function getAllBuiltinStarterKeys(pageCopilot = currentPageCopilot) {
     ...DEFAULT_STARTER_KEYS,
     ...Object.values(PAGE_COPILOT_STARTERS).flat(),
     ...QA_FLOW_BLOCK_STARTERS,
+    "multiPageWordReport",
     "investmentProposalBuilder",
     "landingPageBuilder",
     "batchUrlQaWorkflow",
@@ -7922,6 +7973,10 @@ function getStarterPrompt(starterKey) {
     return tl("landingPowerPointPrompt", { language: getTargetLanguageLabel() });
   }
 
+  if (starterKey === "multiPageWordReport") {
+    return tl("multiPageWordReportPrompt", { language: getTargetLanguageLabel() });
+  }
+
   if (starterKey === "landingPageBuilder") {
     return tl("landingPageBuilderPrompt");
   }
@@ -8265,6 +8320,9 @@ function getStarterOutputArtifactType(starter) {
   if (starterKey === "landingPowerPoint") {
     return "pptx";
   }
+  if (starterKey === "multiPageWordReport") {
+    return "docx";
+  }
   return "";
 }
 
@@ -8299,6 +8357,10 @@ function isPowerPointOutputStarter(starter) {
   return getStarterOutputArtifactType(starter) === "pptx";
 }
 
+function isWordReportOutputStarter(starter) {
+  return getStarterOutputArtifactType(starter) === "docx";
+}
+
 function getHtmlGenerationCopy() {
   const isZh = getUiLanguage().toLowerCase().startsWith("zh");
   return isZh
@@ -8317,6 +8379,11 @@ function getHtmlGenerationCopy() {
         landingPowerPointPackaging: "正在檢查投影片 JSON，準備匯出為 PowerPoint。",
         landingPowerPointReady: "PowerPoint 已生成完成，可以直接下載 `.pptx`。",
         landingPowerPointNoDeck: "模型已回覆，但沒有產出可下載的 PowerPoint 規格。",
+        wordReportPreparing: "正在整理目前頁面、加入的分頁與文件，準備生成 Word 報告。",
+        wordReportGenerating: "模型正在整合來源並建立報告章節，原始 JSON 不會貼進聊天室。",
+        wordReportPackaging: "正在檢查章節、圖片與來源，準備封裝 Word 文件。",
+        wordReportReady: "圖文 Word 報告已完成，可以直接下載 `.docx`。",
+        wordReportNoReport: "模型已回覆，但沒有產出可下載的 Word 報告規格。",
         landingPageDrafting: "正在依模板建立 landing page 初稿。",
         landingPageAuditing: "正在檢查版面穩定性與閱讀性。",
         landingPageRepairing: "正在修正版面，避免文字被擠壓或互相覆蓋。",
@@ -8334,6 +8401,9 @@ function getHtmlGenerationCopy() {
         powerPointStepSource: "整理內容",
         powerPointStepGenerate: "生成投影片",
         powerPointStepFinalize: "封裝 PPTX",
+        wordReportStepSource: "整理多方來源",
+        wordReportStepGenerate: "撰寫圖文報告",
+        wordReportStepFinalize: "封裝 DOCX",
       }
     : {
         title: "HTML Generation Progress",
@@ -8350,6 +8420,11 @@ function getHtmlGenerationCopy() {
         landingPowerPointPackaging: "Validating the slide JSON and preparing a PowerPoint export.",
         landingPowerPointReady: "The PowerPoint deck is ready to download as `.pptx`.",
         landingPowerPointNoDeck: "The model replied, but no downloadable PowerPoint deck was produced.",
+        wordReportPreparing: "Preparing the current page, added tabs, and documents for a Word report.",
+        wordReportGenerating: "The model is synthesizing sources and drafting report sections. Raw JSON will stay out of the chat.",
+        wordReportPackaging: "Validating sections, images, and sources before packaging the Word document.",
+        wordReportReady: "The illustrated Word report is ready to download as `.docx`.",
+        wordReportNoReport: "The model replied, but no downloadable Word-report specification was produced.",
         landingPageDrafting: "Creating the first landing-page draft from the selected template.",
         landingPageAuditing: "Checking layout stability and readability.",
         landingPageRepairing: "Repairing layout issues so text and media do not collide.",
@@ -8367,6 +8442,9 @@ function getHtmlGenerationCopy() {
         powerPointStepSource: "Prepare source",
         powerPointStepGenerate: "Build slides",
         powerPointStepFinalize: "Package PPTX",
+        wordReportStepSource: "Prepare sources",
+        wordReportStepGenerate: "Draft report",
+        wordReportStepFinalize: "Package DOCX",
       };
 }
 
@@ -8385,6 +8463,15 @@ function getLandingPowerPointGenerationSteps() {
     { id: "source", label: copy.powerPointStepSource },
     { id: "generate", label: copy.powerPointStepGenerate },
     { id: "finalize", label: copy.powerPointStepFinalize },
+  ];
+}
+
+function getWordReportGenerationSteps() {
+  const copy = getHtmlGenerationCopy();
+  return [
+    { id: "source", label: copy.wordReportStepSource },
+    { id: "generate", label: copy.wordReportStepGenerate },
+    { id: "finalize", label: copy.wordReportStepFinalize },
   ];
 }
 
@@ -8452,6 +8539,9 @@ function setHtmlGenerationJobStage(messageId, stageId, detail, options = {}) {
     }
     if (options.generatedDeckSpec && typeof options.generatedDeckSpec === "object") {
       message.generatedDeckSpec = options.generatedDeckSpec;
+    }
+    if (options.generatedWordReportSpec && typeof options.generatedWordReportSpec === "object") {
+      message.generatedWordReportSpec = options.generatedWordReportSpec;
     }
     if (typeof options.generatedArtifactType === "string") {
       message.generatedArtifactType = options.generatedArtifactType.trim();
@@ -9705,7 +9795,10 @@ function renderCustomStarterBuilderDiscussion() {
     const roleClass = message.role === "assistant" ? "is-assistant" : "is-user";
     const roleLabel = message.role === "assistant" ? tl("assistantRole") : tl("userRole");
     const body = message.role === "assistant"
-      ? renderMarkdown(message.content, { messageId: `custom-starter-discussion-${index}` })
+      ? renderAssistantMarkdown(message.content, {
+          messageId: `custom-starter-discussion-${index}`,
+          followups: false,
+        })
       : `<div class="ollama-quick-user-text">${escapeHtml(message.content).replace(/\n/g, "<br>")}</div>`;
     return `
       <article class="ollama-quick-message ${roleClass}">
@@ -9834,9 +9927,13 @@ function renderPerspectivePanel(run) {
     .map((stage) => {
       const statusClass = stage.status === "done" ? "is-done" : "is-running";
       const isExpanded = run.expandedKey === stage.id;
-      const preview = getPerspectivePreview(stage.content);
+      const preview = getPerspectivePreview(normalizeAssistantMarkdownForDisplay(stage.content));
       const body = stage.content
-        ? renderMarkdown(stage.content)
+        ? renderAssistantMarkdown(stage.content, {
+            followupSource: "perspective",
+            followupKey: stage.id,
+            disabled: isGenerating,
+          })
         : `
           <div class="ollama-quick-typing">
             <span></span>
@@ -9866,7 +9963,11 @@ function renderPerspectivePanel(run) {
   const finalKey = "final";
   const isFinalExpanded = run.expandedKey === finalKey;
   const finalBody = run.finalContent
-    ? renderMarkdown(run.finalContent)
+    ? renderAssistantMarkdown(run.finalContent, {
+        followupSource: "perspective",
+        followupKey: finalKey,
+        disabled: isGenerating,
+      })
     : `
       <div class="ollama-quick-typing">
         <span></span>
@@ -9875,7 +9976,7 @@ function renderPerspectivePanel(run) {
       </div>
     `;
   const finalPreview = run.finalContent
-    ? `<div class="ollama-quick-perspective-preview">${escapeHtml(getPerspectivePreview(run.finalContent))}</div>`
+    ? `<div class="ollama-quick-perspective-preview">${escapeHtml(getPerspectivePreview(normalizeAssistantMarkdownForDisplay(run.finalContent)))}</div>`
     : finalBody;
 
   return `
@@ -9939,6 +10040,11 @@ function resolveSettingsTheme(value) {
   return normalized;
 }
 
+function normalizeChatFontSize(value) {
+  const normalized = String(value || "small").trim().toLowerCase();
+  return CHAT_FONT_SIZE_OPTIONS.has(normalized) ? normalized : "small";
+}
+
 function normalizePanelViewMode(value) {
   const normalized = String(value || "").trim().toLowerCase();
   return PANEL_VIEW_MODES.includes(normalized) ? normalized : "split";
@@ -9976,6 +10082,7 @@ function applyShellTheme(host = ensureHost()) {
   const preference = normalizeSettingsTheme(currentConfig?.settingsTheme);
   host.dataset.themePreference = preference;
   host.dataset.theme = resolveSettingsTheme(preference);
+  host.dataset.chatFontSize = normalizeChatFontSize(currentConfig?.chatFontSize);
 }
 
 function sanitizeLauncherPosition(value) {
@@ -10410,6 +10517,586 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function looksLikeWrappedMarkdownDocument(value) {
+  const lines = String(value || "").split("\n");
+  const headingCount = lines.filter((line) => /^\s*#{1,3}\s+\S/.test(line)).length;
+  const listCount = lines.filter((line) => /^\s*(?:[-*+]\s+|\d+[.)、]\s*)\S/.test(line)).length;
+  const quoteCount = lines.filter((line) => /^\s*>\s*\S/.test(line)).length;
+  const tableRowCount = lines.filter((line) => /^\s*\|.*\|\s*$/.test(line)).length;
+  const hasTableSeparator = lines.some((line) => {
+    const cells = String(line || "")
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|");
+    return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+  });
+  const nonEmptyCount = lines.filter((line) => line.trim()).length;
+  const hasFollowupList = /(?:suggested next steps?|next steps?|下一步建議|後續建議)\s*[:：]?/i.test(value)
+    && listCount >= 2;
+  const hasMarkdownTable = hasTableSeparator && tableRowCount >= 2;
+  const structureCount = headingCount + listCount + quoteCount + (hasMarkdownTable ? 2 : 0);
+  return hasFollowupList
+    || hasMarkdownTable
+    || (headingCount >= 1 && structureCount >= 3 && nonEmptyCount >= 4)
+    || (headingCount >= 2 && nonEmptyCount >= 4);
+}
+
+const ASSISTANT_MARKDOWN_FENCE_LANGUAGES = new Set([
+  "markdown",
+  "md",
+  "mdown",
+  "mkd",
+]);
+
+const ASSISTANT_PROSE_FENCE_LANGUAGES = new Set([
+  "text",
+  "txt",
+  "plaintext",
+  "plain",
+  "article",
+  "document",
+  "report",
+  "summary",
+  "response",
+]);
+
+const ASSISTANT_CODE_FENCE_LANGUAGES = new Set([
+  "bash",
+  "c",
+  "cpp",
+  "csharp",
+  "css",
+  "go",
+  "html",
+  "java",
+  "javascript",
+  "js",
+  "json",
+  "jsx",
+  "kotlin",
+  "php",
+  "python",
+  "py",
+  "ruby",
+  "rust",
+  "scss",
+  "shell",
+  "sh",
+  "sql",
+  "swift",
+  "toml",
+  "tsx",
+  "typescript",
+  "ts",
+  "xml",
+  "yaml",
+  "yml",
+  "zsh",
+]);
+
+function getAssistantFenceLanguage(infoString) {
+  const normalized = String(infoString || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\{\.?/, "")
+    .replace(/\}$/, "");
+  return normalized.match(/[a-z0-9_+-]+/)?.[0] || "";
+}
+
+function getAssistantCodeSignalCount(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => (
+      /^(?:const|let|var|function|class|interface|type|enum|def|import|from|export|package|public|private|protected|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\b/i.test(line)
+      || /^(?:if|for|while|switch|try|catch)\s*\(/.test(line)
+      || /(?:=>|===|!==|&&|\|\||\+\+|--|;\s*$)/.test(line)
+      || /^<\/?[a-z][^>]*>/i.test(line)
+      || /^[}\])]+[;,]?$/.test(line)
+      || /^[\w$.[\]"']+\s*=\s*[^=]/.test(line)
+      || /^[a-z_$][\w$.[\]]*\s*\([^)]*\)\s*[;{]?$/i.test(line)
+    )).length;
+}
+
+function looksLikeActualCode(value, language = "") {
+  const source = String(value || "").trim();
+  if (!source) {
+    return false;
+  }
+
+  const normalizedLanguage = String(language || "").trim().toLowerCase();
+  if (normalizedLanguage === "json") {
+    try {
+      JSON.parse(source);
+      return true;
+    } catch (_error) {
+      // Continue with the syntax-signal fallback for incomplete JSON.
+    }
+  }
+
+  const nonEmptyLines = source.split("\n").filter((line) => line.trim());
+  const codeSignalCount = getAssistantCodeSignalCount(source);
+  const hasTagStructure = /<([a-z][\w-]*)\b[^>]*>[\s\S]*<\/\1>/i.test(source);
+  const hasJsonLikeStructure = /^[\[{][\s\S]*[\]}]$/.test(source)
+    && /"[^"\n]+"\s*:/.test(source);
+
+  if (hasTagStructure || hasJsonLikeStructure) {
+    return true;
+  }
+  if (ASSISTANT_CODE_FENCE_LANGUAGES.has(normalizedLanguage)) {
+    return codeSignalCount >= 1;
+  }
+  return codeSignalCount >= Math.max(2, Math.ceil(nonEmptyLines.length * 0.35));
+}
+
+function looksLikeAssistantProse(value) {
+  const source = String(value || "").trim();
+  if (source.length < 48) {
+    return false;
+  }
+  const nonEmptyLines = source.split("\n").map((line) => line.trim()).filter(Boolean);
+  const proseLineCount = nonEmptyLines.filter((line) => (
+    /[。！？：；，]/.test(line)
+    || /[.!?:;,](?:\s|$)/.test(line)
+    || /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(line)
+    || line.split(/\s+/).filter(Boolean).length >= 7
+  )).length;
+  return proseLineCount >= Math.max(1, Math.ceil(nonEmptyLines.length * 0.4));
+}
+
+function shouldUnwrapAssistantFence(inner, infoString) {
+  const language = getAssistantFenceLanguage(infoString);
+  if (ASSISTANT_MARKDOWN_FENCE_LANGUAGES.has(language)) {
+    return true;
+  }
+  const isKnownCodeLanguage = ASSISTANT_CODE_FENCE_LANGUAGES.has(language);
+  const isActualCode = looksLikeActualCode(inner, language);
+  if (looksLikeWrappedMarkdownDocument(inner) && !(isKnownCodeLanguage && isActualCode)) {
+    return true;
+  }
+  if (ASSISTANT_PROSE_FENCE_LANGUAGES.has(language)) {
+    return !isActualCode;
+  }
+  if (!language || !isKnownCodeLanguage) {
+    return looksLikeAssistantProse(inner) && !isActualCode;
+  }
+  return false;
+}
+
+function stripAssistantFencePseudoLanguageLine(inner, infoString) {
+  if (getAssistantFenceLanguage(infoString)) {
+    return String(inner || "").trim();
+  }
+
+  const lines = String(inner || "").split("\n");
+  const firstLineLanguage = getAssistantFenceLanguage(lines[0]);
+  if (!ASSISTANT_MARKDOWN_FENCE_LANGUAGES.has(firstLineLanguage)
+    && !ASSISTANT_PROSE_FENCE_LANGUAGES.has(firstLineLanguage)) {
+    return String(inner || "").trim();
+  }
+
+  const remainder = lines.slice(1).join("\n").trim();
+  return looksLikeWrappedMarkdownDocument(remainder) || looksLikeAssistantProse(remainder)
+    ? remainder
+    : String(inner || "").trim();
+}
+
+function isMatchingAssistantFenceClose(line, openingFence) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || trimmed[0] !== openingFence[0]) {
+    return false;
+  }
+  return trimmed.length >= openingFence.length
+    && new RegExp(`^${openingFence[0]}{${openingFence.length},}$`).test(trimmed);
+}
+
+function getMarkdownTableSourceCells(value) {
+  let normalized = String(value || "").trim();
+  if (!normalized.includes("|")) {
+    return [];
+  }
+  if (normalized.startsWith("|")) {
+    normalized = normalized.slice(1);
+  }
+  if (normalized.endsWith("|")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized.split("|").map((cell) => cell.replace(/\s+/g, " ").trim());
+}
+
+function isPossibleMarkdownTableSeparatorFragment(value) {
+  const normalized = String(value || "").trim();
+  return Boolean(normalized) && /-/.test(normalized) && /^[\s|:-]+$/.test(normalized);
+}
+
+function isLooseMarkdownTableSeparator(value, expectedColumns = 0) {
+  const cells = getMarkdownTableSourceCells(value);
+  return cells.length >= 2
+    && (!expectedColumns || cells.length === expectedColumns)
+    && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function normalizeLooseMarkdownTableRow(value, expectedColumns) {
+  let cells = getMarkdownTableSourceCells(value);
+  if (cells.length < expectedColumns) {
+    return "";
+  }
+  if (cells.length > expectedColumns) {
+    cells = [
+      ...cells.slice(0, Math.max(0, expectedColumns - 1)),
+      cells.slice(Math.max(0, expectedColumns - 1)).join(" | "),
+    ];
+  }
+  return `| ${cells.join(" | ")} |`;
+}
+
+function isMarkdownTableBoundaryLine(value) {
+  const normalized = String(value || "").trim();
+  return /^(?:#{1,6}\s+|```|~~~|>{1}\s?|(?:[-*+]\s+|\d+[.)、]\s*)\S|(?:-{3,}|\*{3,}|_{3,})$)/.test(normalized)
+    || /^(?:suggested next steps?|next steps?|下一步建議|後續建議)\s*[:：]?$/i.test(
+      normalized.replace(/[*_`]/g, "")
+    );
+}
+
+function findLooseMarkdownTableAt(lines, startIndex) {
+  const firstLine = String(lines[startIndex] || "").trim();
+  if (!firstLine.includes("|") || isPossibleMarkdownTableSeparatorFragment(firstLine)) {
+    return null;
+  }
+
+  const separatorSearchLimit = Math.min(lines.length, startIndex + 7);
+  for (let separatorStart = startIndex + 1; separatorStart < separatorSearchLimit; separatorStart += 1) {
+    const separatorStartLine = String(lines[separatorStart] || "").trim();
+    if (!separatorStartLine) {
+      continue;
+    }
+    if (!isPossibleMarkdownTableSeparatorFragment(separatorStartLine)) {
+      if (isMarkdownTableBoundaryLine(separatorStartLine)) {
+        break;
+      }
+      continue;
+    }
+
+    const headerParts = lines
+      .slice(startIndex, separatorStart)
+      .map((line) => String(line || "").trim())
+      .filter(Boolean);
+    const headerSource = headerParts.join(" ");
+    const headerCells = getMarkdownTableSourceCells(headerSource);
+    if (headerCells.length < 2) {
+      continue;
+    }
+
+    const separatorParts = [];
+    let separatorEnd = separatorStart;
+    for (; separatorEnd < Math.min(lines.length, separatorStart + 4); separatorEnd += 1) {
+      const fragment = String(lines[separatorEnd] || "").trim();
+      if (!fragment) {
+        continue;
+      }
+      if (!isPossibleMarkdownTableSeparatorFragment(fragment)) {
+        break;
+      }
+      separatorParts.push(fragment);
+      const separatorSource = separatorParts.join("").replace(/\s+/g, "");
+      const nextNonEmpty = lines
+        .slice(separatorEnd + 1)
+        .map((line) => String(line || "").trim())
+        .find(Boolean) || "";
+      const mayContinue = !separatorSource.endsWith("|")
+        && isPossibleMarkdownTableSeparatorFragment(nextNonEmpty);
+      if (isLooseMarkdownTableSeparator(separatorSource, headerCells.length) && !mayContinue) {
+        const normalizedHeader = normalizeLooseMarkdownTableRow(headerSource, headerCells.length);
+        const separatorCells = getMarkdownTableSourceCells(separatorSource);
+        const normalizedSeparator = `| ${separatorCells.join(" | ")} |`;
+        const tableLines = [normalizedHeader, normalizedSeparator];
+        let cursor = separatorEnd + 1;
+
+        while (cursor < lines.length) {
+          while (cursor < lines.length && !String(lines[cursor] || "").trim()) {
+            cursor += 1;
+          }
+          if (cursor >= lines.length) {
+            break;
+          }
+
+          const rowStart = String(lines[cursor] || "").trim();
+          if (isMarkdownTableBoundaryLine(rowStart) || !rowStart.includes("|")) {
+            break;
+          }
+
+          const rowParts = [rowStart];
+          cursor += 1;
+          while (cursor < lines.length) {
+            const rowSource = rowParts.join(" ");
+            const rowCells = getMarkdownTableSourceCells(rowSource);
+            const nextLine = String(lines[cursor] || "").trim();
+            if (rowCells.length >= headerCells.length && rowSource.endsWith("|")) {
+              break;
+            }
+            if (!nextLine) {
+              cursor += 1;
+              continue;
+            }
+            if (isMarkdownTableBoundaryLine(nextLine)) {
+              break;
+            }
+            const nextCells = getMarkdownTableSourceCells(nextLine);
+            const nextLooksLikeNewRow = nextLine.startsWith("|")
+              && nextCells.length >= headerCells.length;
+            if (rowCells.length >= headerCells.length && nextLooksLikeNewRow) {
+              break;
+            }
+            rowParts.push(nextLine);
+            cursor += 1;
+          }
+
+          const normalizedRow = normalizeLooseMarkdownTableRow(
+            rowParts.join(" "),
+            headerCells.length
+          );
+          if (!normalizedRow) {
+            break;
+          }
+          tableLines.push(normalizedRow);
+        }
+
+        return {
+          lines: tableLines,
+          nextIndex: cursor,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeAssistantMarkdownTableSpacing(value) {
+  const lines = String(value || "").split("\n");
+  const output = [];
+  let activeFence = "";
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = String(line || "").trim();
+    const openingMatch = !activeFence ? trimmed.match(/^(`{3,}|~{3,}).*$/) : null;
+    if (openingMatch) {
+      activeFence = openingMatch[1];
+      output.push(line);
+      index += 1;
+      continue;
+    }
+    if (activeFence && isMatchingAssistantFenceClose(trimmed, activeFence)) {
+      activeFence = "";
+      output.push(line);
+      index += 1;
+      continue;
+    }
+
+    if (!activeFence) {
+      const table = findLooseMarkdownTableAt(lines, index);
+      if (table) {
+        if (output.length && String(output[output.length - 1] || "").trim()) {
+          output.push("");
+        }
+        output.push(...table.lines, "");
+        index = table.nextIndex;
+        continue;
+      }
+    }
+
+    output.push(line);
+    index += 1;
+  }
+
+  return output.join("\n").replace(/\n{4,}/g, "\n\n\n").trim();
+}
+
+function normalizeAssistantMarkdownForDisplay(value) {
+  const normalized = String(value || "").replace(/\r\n?/g, "\n").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const lines = normalized.split("\n");
+  const output = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const trimmed = String(lines[index] || "").trim();
+    const openingMatch = trimmed.match(/^(`{3,}|~{3,})[\t ]*(.*)$/);
+    if (!openingMatch) {
+      output.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const openingFence = openingMatch[1];
+    let closingIndex = -1;
+    for (let candidateIndex = index + 1; candidateIndex < lines.length; candidateIndex += 1) {
+      if (isMatchingAssistantFenceClose(lines[candidateIndex], openingFence)) {
+        closingIndex = candidateIndex;
+        break;
+      }
+    }
+
+    if (closingIndex < 0) {
+      const partialInner = lines.slice(index + 1).join("\n").trim();
+      const partialLanguage = getAssistantFenceLanguage(openingMatch[2]);
+      const isKnownArticleFence = ASSISTANT_MARKDOWN_FENCE_LANGUAGES.has(partialLanguage)
+        || ASSISTANT_PROSE_FENCE_LANGUAGES.has(partialLanguage);
+      if (isKnownArticleFence || shouldUnwrapAssistantFence(partialInner, openingMatch[2])) {
+        output.push(stripAssistantFencePseudoLanguageLine(partialInner, openingMatch[2]));
+        break;
+      }
+      output.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const inner = lines.slice(index + 1, closingIndex).join("\n").trim();
+    if (shouldUnwrapAssistantFence(inner, openingMatch[2])) {
+      output.push(stripAssistantFencePseudoLanguageLine(inner, openingMatch[2]));
+    } else {
+      output.push(...lines.slice(index, closingIndex + 1));
+    }
+    index = closingIndex + 1;
+  }
+
+  return normalizeAssistantMarkdownTableSpacing(output.join("\n"));
+}
+
+function normalizeEvidenceText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeEvidenceId(value) {
+  const match = String(value || "").trim().toUpperCase().match(/^E?(\d{1,3})$/);
+  if (!match) {
+    return "";
+  }
+  const numericId = Number.parseInt(match[1], 10);
+  return Number.isInteger(numericId) && numericId > 0 ? `E${numericId}` : "";
+}
+
+function stripEvidenceQuoteWrapper(value) {
+  const normalized = String(value || "").trim();
+  const pairs = [
+    ['"', '"'],
+    ["'", "'"],
+    ["“", "”"],
+    ["‘", "’"],
+    ["「", "」"],
+    ["『", "』"],
+  ];
+  const pair = pairs.find(([start, end]) => normalized.startsWith(start) && normalized.endsWith(end));
+  return pair ? normalized.slice(pair[0].length, -pair[1].length).trim() : normalized;
+}
+
+function getEvidenceVerificationStatus(quote, sourceText) {
+  const normalizedQuote = normalizeEvidenceText(quote);
+  const normalizedSource = normalizeEvidenceText(sourceText);
+  if (normalizedQuote.length < 8 || !normalizedSource) {
+    return "unverified";
+  }
+  return normalizedSource.includes(normalizedQuote) ? "verified" : "unverified";
+}
+
+function replaceEvidenceReferencesOutsideFences(value, itemMap) {
+  const lines = String(value || "").split("\n");
+  let activeFence = "";
+  return lines.map((line) => {
+    const trimmed = String(line || "").trim();
+    const openingMatch = !activeFence ? trimmed.match(/^(`{3,}|~{3,}).*$/) : null;
+    if (openingMatch) {
+      activeFence = openingMatch[1];
+      return line;
+    }
+    if (activeFence && isMatchingAssistantFenceClose(trimmed, activeFence)) {
+      activeFence = "";
+      return line;
+    }
+    if (activeFence) {
+      return line;
+    }
+    return line.replace(/\[\^(E?\d{1,3})\]/gi, (match, rawId) => {
+      const id = normalizeEvidenceId(rawId);
+      const item = itemMap.get(id);
+      return item ? `[[EVIDENCE_REF:${id}:${item.status}]]` : match;
+    });
+  }).join("\n");
+}
+
+function extractAssistantEvidence(value, options = {}) {
+  const normalized = String(value || "").replace(/\r\n?/g, "\n").trim();
+  if (!normalized) {
+    return { body: "", items: [] };
+  }
+
+  const lines = normalized.split("\n");
+  const bodyLines = [];
+  const rawItems = [];
+  let activeFence = "";
+
+  lines.forEach((line) => {
+    const trimmed = String(line || "").trim();
+    const openingMatch = !activeFence ? trimmed.match(/^(`{3,}|~{3,}).*$/) : null;
+    if (openingMatch) {
+      activeFence = openingMatch[1];
+      bodyLines.push(line);
+      return;
+    }
+    if (activeFence && isMatchingAssistantFenceClose(trimmed, activeFence)) {
+      activeFence = "";
+      bodyLines.push(line);
+      return;
+    }
+    if (!activeFence) {
+      const definitionMatch = trimmed.match(/^\[\^(E?\d{1,3})\]:\s*(.+)$/i);
+      if (definitionMatch) {
+        const id = normalizeEvidenceId(definitionMatch[1]);
+        const quote = stripEvidenceQuoteWrapper(definitionMatch[2]);
+        if (id && quote) {
+          rawItems.push({ id, quote });
+        }
+        return;
+      }
+    }
+    bodyLines.push(line);
+  });
+
+  const sourceText = [options.sourceText, options.selection].filter(Boolean).join("\n");
+  const seen = new Set();
+  const items = rawItems
+    .filter((item) => {
+      if (seen.has(item.id)) {
+        return false;
+      }
+      seen.add(item.id);
+      return true;
+    })
+    .slice(0, 12)
+    .map((item) => ({
+      ...item,
+      status: getEvidenceVerificationStatus(item.quote, sourceText),
+    }));
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+  const body = replaceEvidenceReferencesOutsideFences(bodyLines.join("\n"), itemMap)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { body, items };
+}
+
 function normalizeMarkdownLinkTarget(target) {
   const value = (target || "").trim();
   if (!value) {
@@ -10430,6 +11117,10 @@ function normalizeMarkdownLinkTarget(target) {
 
 function renderInlineMarkdown(text) {
   return text
+    .replace(/\[\[EVIDENCE_REF:(E\d{1,3}):(verified|unverified)\]\]/g, (_match, id, status) => {
+      const label = id.replace(/^E/, "");
+      return `<button class="ollama-quick-evidence-ref is-${status}" type="button" data-action="reveal-evidence" data-evidence-id="${id}" title="${escapeHtml(tl("evidenceJumpToSource"))}" aria-label="${escapeHtml(`${tl("evidenceJumpToSource")} ${id}`)}"><span>${label}</span></button>`;
+    })
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
@@ -10461,6 +11152,150 @@ function isMarkdownTableSeparator(line) {
     .every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
 }
 
+function renderMarkdownTable(lines) {
+  const headerCells = parseMarkdownTableRow(lines[0])
+    .map((cell) => `<th>${cell}</th>`)
+    .join("");
+  const bodyRows = lines
+    .slice(2)
+    .filter((line) => /^\|.*\|$/.test(line.trim()))
+    .map((line) => {
+      const cells = parseMarkdownTableRow(line)
+        .map((cell) => `<td>${cell}</td>`)
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+
+  return `
+    <div class="ollama-quick-table-wrap">
+      <table class="ollama-quick-markdown-table">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function getMarkdownHeadingEmoji(text) {
+  const heading = String(text || "").replace(/<[^>]+>/g, " ").replace(/[*_`]/g, " ").trim();
+  if (/\p{Extended_Pictographic}/u.test(heading)) {
+    return "";
+  }
+
+  const emojiRules = [
+    { pattern: /風險|警告|注意|問題|risk|warning|issue|caution/i, emoji: "⚠️" },
+    { pattern: /下一步|後續|建議|行動|待辦|next|action|recommend|todo/i, emoji: "✅" },
+    { pattern: /時間|日期|時程|安排|schedule|timeline|date/i, emoji: "📅" },
+    { pattern: /來源|參考|證據|查核|source|reference|evidence/i, emoji: "🔎" },
+    { pattern: /人員|團隊|角色|成員|people|team|role|crew/i, emoji: "👥" },
+    { pattern: /摘要|總結|重點|結論|summary|overview|takeaway|conclusion/i, emoji: "🧭" },
+  ];
+  return emojiRules.find((rule) => rule.pattern.test(heading))?.emoji || "✨";
+}
+
+function renderMarkdownHeading(text, level) {
+  const emoji = getMarkdownHeadingEmoji(text);
+  const emojiMarkup = emoji
+    ? `<span class="ollama-quick-heading-emoji" aria-hidden="true">${emoji}</span>`
+    : "";
+  return `<h${level}>${emojiMarkup}${renderInlineMarkdown(text)}</h${level}>`;
+}
+
+function renderMarkdownBlock(block) {
+  const lines = String(block || "").split("\n");
+  if (lines.length >= 2 && lines.every((line) => /^\|.*\|$/.test(line.trim())) && isMarkdownTableSeparator(lines[1])) {
+    return renderMarkdownTable(lines);
+  }
+
+  const output = [];
+  let paragraphLines = [];
+  let listItems = [];
+  let listType = "";
+  let listStart = 1;
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+    output.push(`<p>${renderInlineMarkdown(paragraphLines.join("\n")).replace(/\n/g, "<br>")}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) {
+      return;
+    }
+    const tag = listType === "ordered" ? "ol" : "ul";
+    const startAttribute = tag === "ol" && listStart > 1 ? ` start="${listStart}"` : "";
+    output.push(`<${tag}${startAttribute}>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${tag}>`);
+    listItems = [];
+    listType = "";
+    listStart = 1;
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    if (/^__CODE_BLOCK_\d+__$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      output.push(trimmed);
+      return;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      output.push(renderMarkdownHeading(headingMatch[2], level));
+      return;
+    }
+
+    const listMatch = trimmed.match(/^(?:[-*+]\s+|(\d+)\.\s+)(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      const nextListType = listMatch[1] ? "ordered" : "unordered";
+      if (listType && listType !== nextListType) {
+        flushList();
+      }
+      listType = nextListType;
+      if (nextListType === "ordered" && !listItems.length) {
+        listStart = Number.parseInt(listMatch[1], 10) || 1;
+      }
+      listItems.push(listMatch[2]);
+      return;
+    }
+
+    if (/^>{1}\s?/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      output.push(`<blockquote>${renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}</blockquote>`);
+      return;
+    }
+
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      output.push("<hr>");
+      return;
+    }
+
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+  return output.join("");
+}
+
 function renderMarkdown(markdown, options = {}) {
   const messageId = String(options.messageId || "").trim();
   const extractedCodeBlocks = extractMarkdownCodeBlocks(markdown);
@@ -10478,54 +11313,7 @@ function renderMarkdown(markdown, options = {}) {
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((block) => {
-      if (/^###\s+/.test(block)) {
-        return `<h3>${renderInlineMarkdown(block.replace(/^###\s+/, ""))}</h3>`;
-      }
-      if (/^##\s+/.test(block)) {
-        return `<h2>${renderInlineMarkdown(block.replace(/^##\s+/, ""))}</h2>`;
-      }
-      if (/^#\s+/.test(block)) {
-        return `<h1>${renderInlineMarkdown(block.replace(/^#\s+/, ""))}</h1>`;
-      }
-
-      const lines = block.split("\n");
-      if (lines.length >= 2 && lines.every((line) => /^\|.*\|$/.test(line.trim())) && isMarkdownTableSeparator(lines[1])) {
-        const headerCells = parseMarkdownTableRow(lines[0])
-          .map((cell) => `<th>${cell}</th>`)
-          .join("");
-        const bodyRows = lines
-          .slice(2)
-          .filter((line) => /^\|.*\|$/.test(line.trim()))
-          .map((line) => {
-            const cells = parseMarkdownTableRow(line)
-              .map((cell) => `<td>${cell}</td>`)
-              .join("");
-            return `<tr>${cells}</tr>`;
-          })
-          .join("");
-
-        return `
-          <div class="ollama-quick-table-wrap">
-            <table class="ollama-quick-markdown-table">
-              <thead><tr>${headerCells}</tr></thead>
-              <tbody>${bodyRows}</tbody>
-            </table>
-          </div>
-        `;
-      }
-
-      if (lines.every((line) => /^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line))) {
-        const ordered = lines.every((line) => /^\d+\.\s+/.test(line));
-        const items = lines
-          .map((line) => line.replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, ""))
-          .map((line) => `<li>${renderInlineMarkdown(line)}</li>`)
-          .join("");
-        return ordered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`;
-      }
-
-      return `<p>${renderInlineMarkdown(block).replace(/\n/g, "<br>")}</p>`;
-    })
+    .map(renderMarkdownBlock)
     .join("");
 
   return codeBlocks.reduce((html, block, index) => {
@@ -10561,9 +11349,12 @@ function renderMarkdown(markdown, options = {}) {
 function normalizeQuickFollowupLabel(rawLabel) {
   return String(rawLabel || "")
     .replace(/^[-*•]\s+/, "")
-    .replace(/^\d+\.\s+/, "")
-    .replace(/^\*\*(.*?)\*\*$/g, "$1")
-    .replace(/^__(.*?)__$/g, "$1")
+    .replace(/^\d+[.)、]\s*/, "")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/[~*_]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/[。．.!！?？:：;,，、]+$/g, "")
@@ -10588,6 +11379,7 @@ const QUICK_FOLLOWUP_INTRO_PATTERNS = [
   /^for example[:：]/i,
   /^if you (?:want|need)/i,
   /^if you'd like/i,
+  /^if you would like/i,
   /^if needed/i,
   /^if helpful/i,
   /^i can also/i,
@@ -10634,7 +11426,7 @@ const QUICK_FOLLOWUP_INTRO_PATTERNS = [
 
 const QUICK_FOLLOWUP_LEAD_PATTERNS = [
   /^(?:我可以(?:再)?|我也可以|我還可以|如果你需要(?:的話)?|如果你想(?:要)?|如果您需要(?:的話)?|如果您想(?:要)?|若你需要|若你想(?:要)?|也可以|還可以|例如[:：])\s*/i,
-  /^(?:if you (?:want|need)|if you'd like|if needed|if helpful|for example[:：])[\s,:-]*/i,
+  /^(?:if you (?:want|need)|if you'd like|if you would like|if needed|if helpful|for example[:：])[\s,:-]*/i,
   /^(?:i can also|i can help|i can turn this into|i can also turn this into|i can rewrite this as|i can convert this into|i can make this into)\s*/i,
   /^(?:必要(?:であれば|なら|でしたら|に応じて)|もしよければ|ご希望であれば|例えば[:：]|たとえば[:：])\s*/i,
   /^(?:以下もできます|次のこともできます|私(?:が|も)?(?:対応|お手伝い)?できます)\s*/i,
@@ -10682,16 +11474,25 @@ function isLikelyQuickFollowupIntro(line) {
     return false;
   }
 
+  const headingValue = value
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/[*_`]/g, "")
+    .replace(/^[📌💡✅➡️👉🧭]+\s*/u, "")
+    .trim();
+  if (/^(?:下一步建議|建議下一步|後續建議|suggested next steps?|next steps?)[:：]?$/i.test(headingValue)) {
+    return true;
+  }
+
   return matchesQuickFollowupPattern(value, QUICK_FOLLOWUP_INTRO_PATTERNS);
 }
 
 function isLikelyQuickFollowupLine(line) {
   const value = normalizeQuickFollowupLabel(line);
-  if (!value || value.length > 72) {
+  if (!value || value.length > 320) {
     return false;
   }
 
-  if (/[|`]/.test(value)) {
+  if (/[|]/.test(value)) {
     return false;
   }
 
@@ -10712,7 +11513,7 @@ function isEnumeratedFollowupQuestionLine(line) {
   if (!/^\d+\.\s+/.test(raw) || !value) {
     return false;
   }
-  if (value.length > 140) {
+  if (value.length > 320) {
     return false;
   }
   return /[?？]$/.test(raw) || /(?:是否|需不需要|要不要|希望我|需要我|provide|summarize|convert|rewrite|organize|draft|outline|整理|彙整|總結|轉換|輸出|まとめ|整理|変換|정리|변환|요약|resumir|convertir|reescribir|résumer|réécrire|umwandeln|umschreiben|transformar|reescrever|सारांश|बदल)/i.test(value);
@@ -10724,7 +11525,7 @@ function isEnumeratedFollowupActionLine(line) {
   if (!/^\d+\.\s+/.test(raw) || !value) {
     return false;
   }
-  if (value.length > 180) {
+  if (value.length > 320) {
     return false;
   }
   return /^(?:find|get|search|summarize|review|check|compare|map|build|draft|write|extract|organize|convert|rewrite|translate|explain|analyze|identify|list|look up|prepare|outline|整理|彙整|總結|搜尋|查找|查詢|改寫|轉成|輸出|撰寫|比較|檢查|建立|分析|說明|找出|まとめ|検索|調べ|要約|整理|変換|作成|比較|確認|설명|분석|정리|요약|검색|비교|확인|resumir|buscar|explicar|analizar|comparar|organizar|convertir|résumer|chercher|expliquer|analyser|comparer|organiser|zusammenfassen|suchen|erklären|analysieren|vergleichen|organisieren|resumir|buscar|explicar|analisar|comparar|organizar|सारांश|खोज|समझा|विश्लेषण|तुलना|सूची)/i.test(value);
@@ -10747,7 +11548,6 @@ function extractQuickFollowupActionFromLine(line) {
   }
 
   value = value
-    .split(/[。．!?！？，,；;：（(]/)[0]
     .replace(/\s+/g, " ")
     .trim();
 
@@ -10756,7 +11556,7 @@ function extractQuickFollowupActionFromLine(line) {
     .replace(/^的/, "")
     .trim();
 
-  if (!value || value.length < 3 || value.length > 56) {
+  if (!value || value.length < 3 || value.length > 320) {
     return "";
   }
 
@@ -10782,15 +11582,25 @@ function extractSingleLineQuickFollowup(line) {
 
   candidate = extractQuickFollowupActionFromLine(candidate);
 
-  if (!candidate || candidate.length < 3 || candidate.length > 48) {
+  if (!candidate || candidate.length < 3 || candidate.length > 120) {
     return "";
   }
 
   return candidate;
 }
 
+function isQuickFollowupClosingPrompt(line) {
+  const raw = String(line || "").trim();
+  if (!raw || /^\d+\.\s+/.test(raw)) {
+    return false;
+  }
+  const value = normalizeQuickFollowupLabel(raw);
+  return /(?:需要我|要我|想先看|想深入|哪一項|哪一個|告訴我你想|which one|what would you like|where should i start|どれ|どの項目|どちら|어느 항목|무엇부터|cuál|quelle option|welche option|qual opção|कौन सा)/i.test(value)
+    && /[?？]$/.test(raw);
+}
+
 function extractMessageQuickFollowups(content) {
-  const normalized = String(content || "").replace(/\r\n/g, "\n");
+  const normalized = normalizeAssistantMarkdownForDisplay(content);
   if (!normalized.trim()) {
     return { body: "", actions: [] };
   }
@@ -10808,20 +11618,39 @@ function extractMessageQuickFollowups(content) {
     return { body: normalized.trim(), actions: [] };
   }
 
-  const actionLines = lines
+  let actionLines = lines
     .slice(introIndex + 1)
     .map((line) => String(line || "").trim())
     .filter(Boolean);
+  while (actionLines.length && isQuickFollowupClosingPrompt(actionLines[actionLines.length - 1])) {
+    actionLines.pop();
+  }
+  const structuredLineCount = actionLines.filter((line) => /^[-*•]\s+/.test(line) || /^\d+[.)、]\s*/.test(line)).length;
+  if (structuredLineCount >= 2) {
+    actionLines = actionLines.reduce((items, line) => {
+      if (/^[-*•]\s+/.test(line) || /^\d+[.)、]\s*/.test(line) || !items.length) {
+        items.push(line);
+      } else {
+        items[items.length - 1] = `${items[items.length - 1]} ${line}`.trim();
+      }
+      return items;
+    }, []);
+  }
 
   let actions = [];
   const introLine = String(lines[introIndex] || "").trim();
   const explicitOfferList = isLikelyQuickFollowupIntro(introLine);
   if (actionLines.length >= 2 && actionLines.length <= 5) {
-    if (!explicitOfferList && actionLines.some((line) => !/^[-*•]\s+/.test(line) && !/^\d+\.\s+/.test(line) && !/^(?:幫你|替你|把|將|改成|整理成|精簡成|轉成)/.test(normalizeQuickFollowupLabel(line)))) {
+    const hasStructuredActionLines = actionLines.every((line) => /^[-*•]\s+/.test(line) || /^\d+[.)、]\s*/.test(line));
+    if (!hasStructuredActionLines && !explicitOfferList && actionLines.some((line) => !/^(?:幫你|替你|把|將|改成|整理成|精簡成|轉成)/.test(normalizeQuickFollowupLabel(line)))) {
       return { body: normalized.trim(), actions: [] };
     }
 
-    if (actionLines.some((line) => !isLikelyQuickFollowupLine(line) && !(explicitOfferList && (isEnumeratedFollowupQuestionLine(line) || isEnumeratedFollowupActionLine(line))))) {
+    const hasInvalidStructuredAction = hasStructuredActionLines && actionLines.some((line) => {
+      const label = normalizeQuickFollowupLabel(line);
+      return !label || label.length < 3 || label.length > 320 || /^(```|~~~)/.test(label);
+    });
+    if (hasInvalidStructuredAction || (!hasStructuredActionLines && actionLines.some((line) => !isLikelyQuickFollowupLine(line)))) {
       return { body: normalized.trim(), actions: [] };
     }
 
@@ -10864,20 +11693,34 @@ function extractMessageQuickFollowups(content) {
     return { body: normalized.trim(), actions: [] };
   }
 
-  const body = lines
-    .slice(0, introIndex)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
+  const bodyLines = lines.slice(0, introIndex);
+  while (bodyLines.length && (!String(bodyLines[bodyLines.length - 1] || "").trim() || /^\s*(?:---+|___+|\*\*\*+)\s*$/.test(String(bodyLines[bodyLines.length - 1] || "")))) {
+    bodyLines.pop();
+  }
+  const trailingHeading = String(bodyLines[bodyLines.length - 1] || "")
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/[*_`]/g, "")
+    .replace(/^[📌💡✅➡️👉🧭]+\s*/u, "")
     .trim();
+  if (/^(?:下一步建議|建議下一步|後續建議|下一步|suggested next steps?|next steps?|what(?:'s| is) next)[:：]?$/i.test(trailingHeading)) {
+    bodyLines.pop();
+    while (bodyLines.length && (!String(bodyLines[bodyLines.length - 1] || "").trim() || /^\s*(?:---+|___+|\*\*\*+)\s*$/.test(String(bodyLines[bodyLines.length - 1] || "")))) {
+      bodyLines.pop();
+    }
+  }
+
+  const body = bodyLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
   return { body, actions };
 }
 
-function renderMessageQuickFollowups(messageId, actions) {
+function renderMessageQuickFollowups(messageId, actions, options = {}) {
   if (!Array.isArray(actions) || !actions.length) {
     return "";
   }
 
+  const followupSource = String(options.source || "message").trim() || "message";
+  const followupKey = String(options.sourceKey || "").trim();
   const buttons = actions
     .map((action, index) => `
       <button
@@ -10885,17 +11728,187 @@ function renderMessageQuickFollowups(messageId, actions) {
         type="button"
         data-action="run-message-followup"
         data-message-id="${escapeHtml(messageId)}"
+        data-followup-source="${escapeHtml(followupSource)}"
+        data-followup-key="${escapeHtml(followupKey)}"
         data-followup-index="${index}"
-      >${escapeHtml(action.label)}</button>
+        ${options.disabled ? "disabled" : ""}
+      >
+        <span class="ollama-quick-followup-action-index" aria-hidden="true">${index + 1}</span>
+        <span class="ollama-quick-followup-action-label">${escapeHtml(action.label)}</span>
+        <span class="ollama-quick-followup-action-arrow" aria-hidden="true">→</span>
+      </button>
     `)
     .join("");
 
   return `
     <section class="ollama-quick-message-followups">
-      <div class="ollama-quick-message-followups-title">${escapeHtml(tl("messageFollowupTitle"))}</div>
+      <div class="ollama-quick-message-followups-head">
+        <div class="ollama-quick-message-followups-title"><span aria-hidden="true">📌</span>${escapeHtml(tl("messageFollowupTitle"))}</div>
+        <div class="ollama-quick-message-followups-hint">${escapeHtml(tl("messageFollowupHint"))}</div>
+      </div>
       <div class="ollama-quick-message-followups-list">${buttons}</div>
     </section>
   `;
+}
+
+function renderEvidencePanel(items, options = {}) {
+  const evidenceItems = Array.isArray(items) ? items : [];
+  const messageId = String(options.messageId || "").trim();
+  const sourceTitle = String(options.sourceTitle || tl("evidenceSourceCurrentPage")).trim();
+  const sourceUrl = String(options.sourceUrl || "").trim();
+  if (!evidenceItems.length) {
+    if (!options.showMissing) {
+      return "";
+    }
+    return `
+      <section class="ollama-quick-evidence-panel is-missing" data-evidence-message-id="${escapeHtml(messageId)}">
+        <div class="ollama-quick-evidence-head">
+          <div class="ollama-quick-evidence-title"><span aria-hidden="true">◇</span>${escapeHtml(tl("evidenceTitle"))}</div>
+        </div>
+        <div class="ollama-quick-evidence-missing">${escapeHtml(tl("evidenceMissing"))}</div>
+      </section>
+    `;
+  }
+
+  const verifiedCount = evidenceItems.filter((item) => item.status === "verified").length;
+  const cards = evidenceItems.map((item) => {
+    const isVerified = item.status === "verified";
+    return `
+      <button
+        class="ollama-quick-evidence-card ${isVerified ? "is-verified" : "is-unverified"}"
+        type="button"
+        data-action="reveal-evidence"
+        data-evidence-id="${escapeHtml(item.id)}"
+        title="${escapeHtml(tl("evidenceJumpToSource"))}"
+      >
+        <span class="ollama-quick-evidence-card-top">
+          <span class="ollama-quick-evidence-card-id">${escapeHtml(item.id)}</span>
+          <span class="ollama-quick-evidence-status"><span aria-hidden="true">${isVerified ? "●" : "○"}</span>${escapeHtml(tl(isVerified ? "evidenceVerified" : "evidenceUnverified"))}</span>
+        </span>
+        <span class="ollama-quick-evidence-quote">“${escapeHtml(item.quote)}”</span>
+        <span class="ollama-quick-evidence-source">
+          <span>${escapeHtml(sourceTitle || tl("evidenceSourceCurrentPage"))}</span>
+          ${sourceUrl ? `<span>${escapeHtml(sourceUrl)}</span>` : ""}
+        </span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <section class="ollama-quick-evidence-panel" data-evidence-message-id="${escapeHtml(messageId)}">
+      <div class="ollama-quick-evidence-head">
+        <div class="ollama-quick-evidence-title"><span aria-hidden="true">◇</span>${escapeHtml(tl("evidenceTitle"))}</div>
+        <div class="ollama-quick-evidence-summary">${escapeHtml(tl("evidenceVerifiedSummary", { verified: verifiedCount, total: evidenceItems.length }))}</div>
+      </div>
+      <div class="ollama-quick-evidence-list">${cards}</div>
+    </section>
+  `;
+}
+
+function getMessageEvidenceItem(messageId, evidenceId) {
+  const message = chatMessages.find((item) => String(item.id) === String(messageId));
+  if (!message?.evidenceMode || !message.evidenceSource) {
+    return null;
+  }
+  const parsed = extractAssistantEvidence(normalizeAssistantMarkdownForDisplay(message.content), {
+    sourceText: message.evidenceSource.pageText || "",
+    selection: message.evidenceSource.selection || "",
+  });
+  return parsed.items.find((item) => item.id === normalizeEvidenceId(evidenceId)) || null;
+}
+
+function findEvidenceTargetElement(quote) {
+  const normalizedQuote = normalizeEvidenceText(quote);
+  if (!normalizedQuote || !document.body) {
+    return null;
+  }
+
+  const host = document.getElementById(HOST_ID);
+  const selector = "p, li, td, th, dd, dt, blockquote, pre, code, figcaption, h1, h2, h3, h4, h5, h6, [role='article'], [role='main'], article, section, div, span";
+  const candidates = Array.from(document.body.querySelectorAll(selector)).slice(0, 10000);
+  const matches = [];
+  candidates.forEach((element) => {
+    if (!(element instanceof HTMLElement) || host?.contains(element)) {
+      return;
+    }
+    const text = normalizeEvidenceText(element.innerText || element.textContent || "");
+    if (!text || text.length < normalizedQuote.length || !text.includes(normalizedQuote)) {
+      return;
+    }
+    matches.push({ element, textLength: text.length });
+  });
+  if (matches.length) {
+    matches.sort((left, right) => left.textLength - right.textLength);
+    return matches[0].element;
+  }
+
+  const fallbackNeedle = normalizedQuote.length > 72 ? normalizedQuote.slice(0, 72) : normalizedQuote;
+  if (fallbackNeedle.length < 24) {
+    return null;
+  }
+  const fallbackMatches = [];
+  candidates.forEach((element) => {
+    if (!(element instanceof HTMLElement) || host?.contains(element)) {
+      return;
+    }
+    const text = normalizeEvidenceText(element.innerText || element.textContent || "");
+    if (text.includes(fallbackNeedle)) {
+      fallbackMatches.push({ element, textLength: text.length });
+    }
+  });
+  fallbackMatches.sort((left, right) => left.textLength - right.textLength);
+  return fallbackMatches[0]?.element || null;
+}
+
+function highlightEvidenceTarget(element) {
+  document.querySelectorAll(".edge-ai-evidence-target").forEach((node) => {
+    node.classList.remove("edge-ai-evidence-target");
+  });
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  element.classList.add("edge-ai-evidence-target");
+  element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  if (evidenceHighlightTimer) {
+    window.clearTimeout(evidenceHighlightTimer);
+  }
+  evidenceHighlightTimer = window.setTimeout(() => {
+    element.classList.remove("edge-ai-evidence-target");
+    evidenceHighlightTimer = 0;
+  }, 7000);
+}
+
+function renderAssistantMarkdown(content, options = {}) {
+  const normalized = normalizeAssistantMarkdownForDisplay(content);
+  const evidenceSource = options.evidenceSource && typeof options.evidenceSource === "object"
+    ? options.evidenceSource
+    : {};
+  const evidenceData = options.evidenceMode
+    ? extractAssistantEvidence(normalized, {
+        sourceText: evidenceSource.pageText || "",
+        selection: evidenceSource.selection || "",
+      })
+    : { body: normalized, items: [] };
+  const followupData = options.followups === false
+    ? { body: evidenceData.body, actions: [] }
+    : extractMessageQuickFollowups(evidenceData.body);
+  const body = followupData.actions.length ? followupData.body : evidenceData.body;
+  const messageId = String(options.messageId || "").trim();
+  const articleMarkup = body ? renderMarkdown(body, { messageId }) : "";
+  const evidenceMarkup = options.evidenceMode
+    ? renderEvidencePanel(evidenceData.items, {
+        messageId,
+        sourceTitle: evidenceSource.title || tl("evidenceSourceCurrentPage"),
+        sourceUrl: evidenceSource.url || "",
+        showMissing: !options.disabled,
+      })
+    : "";
+  const followupMarkup = renderMessageQuickFollowups(messageId, followupData.actions, {
+    disabled: Boolean(options.disabled),
+    source: options.followupSource || "message",
+    sourceKey: options.followupKey || "",
+  });
+  return `${articleMarkup}${evidenceMarkup}${followupMarkup}`;
 }
 
 function openCustomStarterBuilderFromFollowup(actionLabel) {
@@ -11993,6 +13006,18 @@ async function buildPrompt(userMessage, options = {}) {
         "When images are available, prefer image-left or image-right layouts, distribute different images across different slides, and avoid returning a mostly text-only deck.",
       ].join("\n")
     : "";
+  const evidenceModeInstruction = promptContextOptions.evidenceMode === true && context
+    ? [
+        "EVIDENCE MODE — CURRENT PAGE ONLY",
+        "Ground factual claims about the current page in verbatim passages from CURRENT PAGE CONTEXT.",
+        "After each supported claim, add a citation marker such as [^E1]. Reuse a marker only when the same passage supports the claim.",
+        "After the main answer, define every citation on its own single line using exactly this format: [^E1]: verbatim passage copied from CURRENT PAGE CONTEXT",
+        "Each evidence passage must be 12 to 300 characters, copied word-for-word except that whitespace may be collapsed to one space. Do not paraphrase, translate, add ellipses, or wrap evidence in Markdown.",
+        "Never invent a passage. Never use page title, URL, model knowledge, chat history, attachments, browser tabs, GitHub sources, or web search results as an E citation in this MVP.",
+        "If the current page does not directly support a claim, explicitly label it as not verified from the current page and do not attach an E citation.",
+        "If you include Suggested next steps, place all [^E1]: definition lines immediately before that final next-steps section.",
+      ].join("\n")
+    : "";
 
   if (starterRequest) {
     return [
@@ -12021,6 +13046,7 @@ async function buildPrompt(userMessage, options = {}) {
     powerPointTemplateInstruction,
     powerPointSourceBlendInstruction,
     powerPointImageInstruction,
+    evidenceModeInstruction,
     `USER MESSAGE\n${userMessage}`,
   ]
     .filter(Boolean)
@@ -12073,6 +13099,13 @@ function buildSystemPrompt() {
   return [
     configuredPrompt,
     buildUntrustedContentSafetyRules(),
+    [
+      "Format replies for comfortable reading in a narrow browser panel.",
+      "Use short sections, meaningful Markdown headings or lists, and blank lines between distinct ideas instead of dense walls of text.",
+      "For explanatory replies, use a small number of relevant emoji as section markers when they improve scanning; do not add emoji to code, data, URLs, citations, or every line.",
+      "Render ordinary prose as normal Markdown and never wrap the entire reply in a markdown, md, or unlabelled code fence. Use code fences only for actual code or data that the user should see as source text.",
+      "When you choose to offer follow-up actions, end the reply with a localized 'Suggested next steps' heading, one short introductory sentence, and 2 to 5 concise numbered actions. Do not add text after that list because the interface turns those actions into clickable next-question buttons.",
+    ].join(" "),
     `Reply language: ${replyLanguage}. Always answer in this language unless the user explicitly asks for another language.`,
   ]
     .filter(Boolean)
@@ -12209,6 +13242,7 @@ function downloadBinaryBlob(filename, bytes, mimeType = "application/octet-strea
 }
 
 const POWERPOINT_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const WORD_REPORT_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const POWERPOINT_SLIDE_WIDTH = 12192000;
 const POWERPOINT_SLIDE_HEIGHT = 6858000;
 const POWERPOINT_NOTES_WIDTH = 6858000;
@@ -12358,7 +13392,7 @@ function isUsablePowerPointImageUrl(value) {
   return /^https?:\/\//i.test(normalized) || /^data:image\//i.test(normalized);
 }
 
-function normalizePowerPointImageCandidate(item) {
+function normalizePowerPointImageCandidate(item, context = {}) {
   const src = String(item?.src || item?.imageUrl || item?.url || "").trim();
   if (!isUsablePowerPointImageUrl(src)) {
     return null;
@@ -12366,6 +13400,8 @@ function normalizePowerPointImageCandidate(item) {
   return {
     src,
     alt: normalizePowerPointText(item?.alt || item?.title || item?.caption || ""),
+    sourceUrl: String(item?.sourceUrl || item?.pageUrl || context?.url || "").trim(),
+    sourceTitle: normalizePowerPointText(item?.sourceTitle || context?.title || ""),
   };
 }
 
@@ -12374,7 +13410,7 @@ function collectPowerPointSourceImageCandidatesFromContexts(contexts) {
   const seen = new Set();
   (Array.isArray(contexts) ? contexts : []).forEach((context) => {
     (Array.isArray(context?.imageCandidates) ? context.imageCandidates : []).forEach((item) => {
-      const normalized = normalizePowerPointImageCandidate(item);
+      const normalized = normalizePowerPointImageCandidate(item, context);
       if (!normalized) {
         return;
       }
@@ -12386,7 +13422,56 @@ function collectPowerPointSourceImageCandidatesFromContexts(contexts) {
       images.push(normalized);
     });
   });
-  return images.slice(0, MAX_PAGE_IMAGE_CANDIDATES);
+  return images.slice(0, MAX_DOCUMENT_SOURCE_IMAGE_CANDIDATES);
+}
+
+function getPowerPointMatchTokens(value) {
+  return new Set(
+    normalizePowerPointText(value)
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}]{2,}/gu) || []
+  );
+}
+
+function scorePowerPointImageCandidateForSlide(slide, candidate) {
+  const slideText = [slide?.title, slide?.subtitle, slide?.body, ...(slide?.bullets || [])].filter(Boolean).join(" ");
+  const candidateText = [candidate?.alt, candidate?.sourceTitle].filter(Boolean).join(" ");
+  const slideTokens = getPowerPointMatchTokens(slideText);
+  const candidateTokens = getPowerPointMatchTokens(candidateText);
+  let score = 0;
+  candidateTokens.forEach((token) => {
+    if (slideTokens.has(token)) {
+      score += token.length >= 5 ? 3 : 2;
+    }
+  });
+  const slideSourceUrl = String(slide?.sourceUrl || "").trim();
+  const candidateSourceUrl = String(candidate?.sourceUrl || "").trim();
+  if (slideSourceUrl && candidateSourceUrl && slideSourceUrl === candidateSourceUrl) {
+    score += 20;
+  } else if (slideSourceUrl && candidateSourceUrl) {
+    try {
+      if (new URL(slideSourceUrl).hostname === new URL(candidateSourceUrl).hostname) {
+        score += 6;
+      }
+    } catch (_error) {
+      // Keep text-based matching when a source URL cannot be parsed.
+    }
+  }
+  return score;
+}
+
+function selectPowerPointImageCandidateForSlide(slide, candidates, usedImageUrls) {
+  const available = candidates.filter((candidate) => !usedImageUrls.has(candidate.src.toLowerCase()));
+  if (!available.length) {
+    return null;
+  }
+  return available
+    .map((candidate, index) => ({
+      candidate,
+      index,
+      score: scorePowerPointImageCandidateForSlide(slide, candidate),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.candidate || null;
 }
 
 async function collectPowerPointSourceImageCandidates(contextOptions = {}) {
@@ -12544,16 +13629,37 @@ function applyPowerPointTemplateOptions(deckSpec, contextOptions = {}) {
 function applyRequiredPowerPointSourceImages(deckSpec, imageCandidates = []) {
   const normalizedDeck = normalizePowerPointDeckSpec(deckSpec);
   const candidates = collectPowerPointSourceImageCandidatesFromContexts([{ imageCandidates }]);
-  if (!normalizedDeck || !candidates.length) {
-    return normalizedDeck || deckSpec;
+  if (!normalizedDeck) {
+    return deckSpec;
+  }
+  if (!candidates.length) {
+    normalizedDeck.slides.forEach((slide) => {
+      slide.imageUrl = "";
+      slide.imageAlt = "";
+      if (slide.layout === "image-left" || slide.layout === "image-right") {
+        slide.layout = "content";
+      }
+    });
+    return normalizedDeck;
   }
 
-  const usedImageUrls = new Set(
-    normalizedDeck.slides
-      .map((slide) => String(slide.imageUrl || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-  let nextImageIndex = 0;
+  const usedImageUrls = new Set();
+  normalizedDeck.slides.forEach((slide) => {
+    const currentImageUrl = String(slide.imageUrl || "").trim();
+    if (!currentImageUrl) {
+      return;
+    }
+    usedImageUrls.add(currentImageUrl.toLowerCase());
+    const matchingCandidate = candidates.find((candidate) => candidate.src.toLowerCase() === currentImageUrl.toLowerCase());
+    if (!matchingCandidate) {
+      usedImageUrls.delete(currentImageUrl.toLowerCase());
+      slide.imageUrl = "";
+      slide.imageAlt = "";
+      return;
+    }
+    slide.imageAlt = slide.imageAlt || matchingCandidate.alt || slide.title;
+    slide.sourceUrl = slide.sourceUrl || matchingCandidate.sourceUrl;
+  });
   const slidesWithImages = normalizedDeck.slides.filter((slide) => isUsablePowerPointImageUrl(slide.imageUrl)).length;
   let addedImageCount = 0;
   const contentSlideCount = Math.max(1, normalizedDeck.slides.length - 1);
@@ -12575,29 +13681,23 @@ function applyRequiredPowerPointSourceImages(deckSpec, imageCandidates = []) {
       continue;
     }
 
-    while (nextImageIndex < candidates.length && usedImageUrls.has(candidates[nextImageIndex].src.toLowerCase())) {
-      nextImageIndex += 1;
-    }
-    const image = candidates[nextImageIndex];
+    const image = selectPowerPointImageCandidateForSlide(slide, candidates, usedImageUrls);
     if (!image) {
       break;
     }
 
     slide.imageUrl = image.src;
     slide.imageAlt = slide.imageAlt || image.alt || slide.title || `Slide ${slideIndex + 1} image`;
+    slide.sourceUrl = slide.sourceUrl || image.sourceUrl;
     slide.layout = slideIndex % 2 === 0 ? "image-left" : "image-right";
     usedImageUrls.add(image.src.toLowerCase());
-    nextImageIndex += 1;
     addedImageCount += 1;
   }
 
   const finalImageCount = normalizedDeck.slides.filter((slide) => isUsablePowerPointImageUrl(slide.imageUrl)).length;
   if (finalImageCount < targetImageCount && normalizedDeck.slides.length < 8) {
     while (normalizedDeck.slides.length < 8 && normalizedDeck.slides.filter((slide) => isUsablePowerPointImageUrl(slide.imageUrl)).length < targetImageCount) {
-      while (nextImageIndex < candidates.length && usedImageUrls.has(candidates[nextImageIndex].src.toLowerCase())) {
-        nextImageIndex += 1;
-      }
-      const image = candidates[nextImageIndex];
+      const image = candidates.find((candidate) => !usedImageUrls.has(candidate.src.toLowerCase()));
       if (!image) {
         break;
       }
@@ -12609,15 +13709,75 @@ function applyRequiredPowerPointSourceImages(deckSpec, imageCandidates = []) {
         imageUrl: image.src,
         imageAlt: image.alt || "Source image",
         notes: "",
-        sourceUrl: "",
+        sourceUrl: image.sourceUrl || "",
         layout: normalizedDeck.slides.length % 2 === 0 ? "image-left" : "image-right",
       });
       usedImageUrls.add(image.src.toLowerCase());
-      nextImageIndex += 1;
     }
   }
 
   return normalizedDeck;
+}
+
+function applyRequiredPowerPointSourceReferences(deckSpec, sourceReferences = []) {
+  const deck = normalizePowerPointDeckSpec(deckSpec);
+  if (!deck) {
+    return deckSpec;
+  }
+  const sources = (Array.isArray(sourceReferences) ? sourceReferences : [])
+    .map((source) => ({
+      title: normalizePowerPointText(source?.title || source?.url),
+      url: String(source?.url || "").trim(),
+      searchText: normalizePowerPointText(source?.searchText || source?.title || ""),
+    }))
+    .filter((source) => source.url)
+    .filter((source, index, list) => list.findIndex((candidate) => candidate.url === source.url) === index);
+  if (!sources.length) {
+    return deck;
+  }
+
+  const allowedSourceUrls = new Set(sources.map((source) => source.url));
+  deck.slides.forEach((slide) => {
+    const sourceUrl = String(slide.sourceUrl || "").trim();
+    if (sourceUrl && !allowedSourceUrls.has(sourceUrl)) {
+      slide.sourceUrl = "";
+    }
+  });
+  const existingSourceUrls = new Set(deck.slides.map((slide) => String(slide.sourceUrl || "").trim()).filter(Boolean));
+  sources.forEach((source) => {
+    if (existingSourceUrls.has(source.url)) {
+      return;
+    }
+    const availableSlides = deck.slides
+      .map((slide, index) => ({ slide, index }))
+      .filter(({ slide }) => !String(slide.sourceUrl || "").trim());
+    if (!availableSlides.length) {
+      const finalSlide = deck.slides[deck.slides.length - 1];
+      const sourceNote = `Additional source: ${source.url}`;
+      if (finalSlide && !String(finalSlide.notes || "").includes(source.url)) {
+        finalSlide.notes = [finalSlide.notes, sourceNote].filter(Boolean).join(" · ");
+      }
+      return;
+    }
+    const sourceTokens = getPowerPointMatchTokens([source.title, source.searchText].filter(Boolean).join(" "));
+    const selected = availableSlides
+      .map(({ slide, index }, order) => {
+        const slideTokens = getPowerPointMatchTokens([slide.title, slide.subtitle, slide.body, ...(slide.bullets || [])].filter(Boolean).join(" "));
+        let score = 0;
+        sourceTokens.forEach((token) => {
+          if (slideTokens.has(token)) {
+            score += token.length >= 5 ? 3 : 2;
+          }
+        });
+        return { slide, index, order, score };
+      })
+      .sort((left, right) => right.score - left.score || left.order - right.order)[0];
+    if (selected?.slide) {
+      selected.slide.sourceUrl = source.url;
+      existingSourceUrls.add(source.url);
+    }
+  });
+  return deck;
 }
 
 function extractPowerPointDeckSpecFromText(rawText) {
@@ -12635,6 +13795,257 @@ function extractPowerPointDeckSpecFromText(rawText) {
 function buildPowerPointFilename(title = "", fallback = "presentation") {
   const normalizedTitle = String(title || "").trim() || fallback;
   return `${timestampForFile(new Date())}-${sanitizeFileSegment(normalizedTitle, fallback)}.pptx`;
+}
+
+function normalizeWordReportText(value, fallback = "") {
+  return normalizePowerPointText(value, fallback);
+}
+
+function normalizeWordReportStringArray(value, limit = 8) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || "").trim()
+      ? String(value).split(/\n+/)
+      : [];
+  return items
+    .map((item) => normalizeWordReportText(item))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function normalizeWordReportSpec(value) {
+  const root = value?.report && typeof value.report === "object" ? value.report : value;
+  if (!root || typeof root !== "object") {
+    return null;
+  }
+  const sectionSource = Array.isArray(root.sections)
+    ? root.sections
+    : Array.isArray(root.chapters)
+      ? root.chapters
+      : [];
+  const sections = sectionSource
+    .map((item, index) => {
+      const heading = normalizeWordReportText(item?.heading || item?.title || item?.name, `Section ${index + 1}`);
+      const summary = normalizeWordReportText(item?.summary || item?.lead || item?.overview);
+      const paragraphs = normalizeWordReportStringArray(item?.paragraphs || item?.body || item?.content, 8);
+      const bullets = normalizeWordReportStringArray(item?.bullets || item?.points || item?.items, 10);
+      const imageUrl = String(item?.imageUrl || item?.imageURL || item?.image || item?.imageSrc || "").trim();
+      const imageAlt = normalizeWordReportText(item?.imageAlt || item?.alt || item?.caption);
+      const sourceUrl = String(item?.sourceUrl || item?.url || "").trim();
+      const hasImage = isUsablePowerPointImageUrl(imageUrl);
+      if (!heading && !summary && !paragraphs.length && !bullets.length && !hasImage) {
+        return null;
+      }
+      return {
+        heading,
+        summary,
+        paragraphs,
+        bullets,
+        imageUrl: hasImage ? imageUrl : "",
+        imageAlt,
+        sourceUrl,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!sections.length) {
+    return null;
+  }
+
+  const sources = (Array.isArray(root.sources) ? root.sources : [])
+    .map((item) => ({
+      title: normalizeWordReportText(item?.title || item?.name || item?.label || item?.url),
+      url: String(item?.url || item?.sourceUrl || "").trim(),
+    }))
+    .filter((item) => item.title || item.url)
+    .filter((item, index, list) => {
+      const key = item.url || item.title.toLocaleLowerCase();
+      return list.findIndex((candidate) => (candidate.url || candidate.title.toLocaleLowerCase()) === key) === index;
+    })
+    .slice(0, 20);
+
+  sections.forEach((section) => {
+    if (section.sourceUrl && !sources.some((source) => source.url === section.sourceUrl)) {
+      sources.push({ title: getPowerPointSourceLabel(section.sourceUrl) || section.heading, url: section.sourceUrl });
+    }
+  });
+
+  return {
+    title: normalizeWordReportText(root.title || root.name || sections[0]?.heading, "Source Report"),
+    subtitle: normalizeWordReportText(root.subtitle || root.description || ""),
+    executiveSummary: normalizeWordReportText(root.executiveSummary || root.summary || root.overview || ""),
+    sections,
+    sources: sources.slice(0, 20),
+  };
+}
+
+function applyRequiredWordReportSourceImages(reportSpec, imageCandidates = []) {
+  const report = normalizeWordReportSpec(reportSpec);
+  const candidates = collectPowerPointSourceImageCandidatesFromContexts([{ imageCandidates }]);
+  if (!report) {
+    return reportSpec;
+  }
+  if (!candidates.length) {
+    report.sections.forEach((section) => {
+      section.imageUrl = "";
+      section.imageAlt = "";
+    });
+    return report;
+  }
+
+  const usedImageUrls = new Set();
+  report.sections.forEach((section) => {
+    const imageUrl = String(section.imageUrl || "").trim();
+    if (!imageUrl) {
+      return;
+    }
+    usedImageUrls.add(imageUrl.toLowerCase());
+    const sourceImage = candidates.find((candidate) => candidate.src.toLowerCase() === imageUrl.toLowerCase());
+    if (!sourceImage) {
+      usedImageUrls.delete(imageUrl.toLowerCase());
+      section.imageUrl = "";
+      section.imageAlt = "";
+      return;
+    }
+    section.imageAlt = section.imageAlt || sourceImage.alt || section.heading;
+    section.sourceUrl = section.sourceUrl || sourceImage.sourceUrl;
+  });
+
+  const currentImageCount = report.sections.filter((section) => isUsablePowerPointImageUrl(section.imageUrl)).length;
+  const targetImageCount = Math.min(candidates.length, Math.max(2, Math.ceil(report.sections.length * 0.6)));
+  let addedImageCount = 0;
+  for (const section of report.sections) {
+    if (currentImageCount + addedImageCount >= targetImageCount) {
+      break;
+    }
+    if (isUsablePowerPointImageUrl(section.imageUrl)) {
+      continue;
+    }
+    const image = selectPowerPointImageCandidateForSlide(
+      {
+        title: section.heading,
+        body: [section.summary, ...section.paragraphs].filter(Boolean).join(" "),
+        bullets: section.bullets,
+        sourceUrl: section.sourceUrl,
+      },
+      candidates,
+      usedImageUrls
+    );
+    if (!image) {
+      break;
+    }
+    section.imageUrl = image.src;
+    section.imageAlt = section.imageAlt || image.alt || section.heading;
+    section.sourceUrl = section.sourceUrl || image.sourceUrl;
+    usedImageUrls.add(image.src.toLowerCase());
+    addedImageCount += 1;
+  }
+
+  report.sections.forEach((section) => {
+    if (section.sourceUrl && !report.sources.some((source) => source.url === section.sourceUrl)) {
+      report.sources.push({
+        title: getPowerPointSourceLabel(section.sourceUrl) || section.heading,
+        url: section.sourceUrl,
+      });
+    }
+  });
+  report.sources = report.sources.slice(0, 20);
+  return report;
+}
+
+async function collectArtifactSourceReferences(contextOptions = {}) {
+  const sources = [];
+  if (shouldIncludePageContext(contextOptions)) {
+    try {
+      const currentContext = await getAggregatedPageContext(contextOptions);
+      sources.push({
+        title: normalizeWordReportText(currentContext?.title || document.title || window.location.href),
+        url: String(currentContext?.url || window.location.href || "").trim(),
+        searchText: normalizeWordReportText([
+          currentContext?.title,
+          currentContext?.metaDescription,
+          currentContext?.headings,
+          String(currentContext?.pageText || "").slice(0, 1600),
+        ].filter(Boolean).join(" ")),
+      });
+    } catch (_error) {
+      sources.push({
+        title: normalizeWordReportText(document.title || window.location.href),
+        url: String(window.location.href || "").trim(),
+        searchText: normalizeWordReportText(document.title || ""),
+      });
+    }
+  }
+  attachedBrowserTabs.forEach((item) => {
+    sources.push({
+      title: normalizeWordReportText(item?.context?.title || item?.title || item?.url),
+      url: String(item?.context?.url || item?.url || "").trim(),
+      searchText: normalizeWordReportText([
+        item?.context?.title || item?.title,
+        item?.context?.metaDescription,
+        item?.context?.headings,
+        String(item?.context?.pageText || "").slice(0, 1600),
+      ].filter(Boolean).join(" ")),
+    });
+  });
+  attachedDocuments.forEach((item) => {
+    sources.push({
+      title: normalizeWordReportText(item?.name || "Attached document"),
+      url: "",
+      searchText: normalizeWordReportText([item?.name, String(item?.text || "").slice(0, 1600)].filter(Boolean).join(" ")),
+    });
+  });
+  return sources
+    .filter((source) => source.title || source.url)
+    .filter((source, index, list) => {
+      const key = source.url || source.title.toLocaleLowerCase();
+      return list.findIndex((candidate) => (candidate.url || candidate.title.toLocaleLowerCase()) === key) === index;
+    });
+}
+
+function applyRequiredWordReportSourceReferences(reportSpec, sourceReferences = []) {
+  const report = normalizeWordReportSpec(reportSpec);
+  if (!report) {
+    return reportSpec;
+  }
+  const actualSources = (Array.isArray(sourceReferences) ? sourceReferences : [])
+    .map((source) => ({
+      title: normalizeWordReportText(source?.title || source?.url),
+      url: String(source?.url || "").trim(),
+    }))
+    .filter((source) => source.title || source.url)
+    .filter((source, index, list) => {
+      const key = source.url || source.title.toLocaleLowerCase();
+      return list.findIndex((candidate) => (candidate.url || candidate.title.toLocaleLowerCase()) === key) === index;
+    });
+  if (!actualSources.length) {
+    return report;
+  }
+  const allowedSourceUrls = new Set(actualSources.map((source) => source.url).filter(Boolean));
+  report.sections.forEach((section) => {
+    if (section.sourceUrl && !allowedSourceUrls.has(section.sourceUrl)) {
+      section.sourceUrl = "";
+    }
+  });
+  report.sources = actualSources.slice(0, 24);
+  return report;
+}
+
+function extractWordReportSpecFromText(rawText) {
+  const candidates = collectLikelyJsonCandidates(String(rawText || ""));
+  for (const candidate of candidates) {
+    const parsed = parseStarterDraftCandidate(candidate);
+    const normalized = normalizeWordReportSpec(parsed);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function buildWordReportFilename(title = "", fallback = "source-report") {
+  const normalizedTitle = String(title || "").trim() || fallback;
+  return `${timestampForFile(new Date())}-${sanitizeFileSegment(normalizedTitle, fallback)}.docx`;
 }
 
 function computeCrc32(bytes) {
@@ -13586,6 +14997,338 @@ async function buildPowerPointFileBytes(deckSpec) {
   return createZipStore(entries);
 }
 
+function getWordReportLabels() {
+  const isZh = getUiLanguage().toLowerCase().startsWith("zh");
+  return isZh
+    ? {
+        executiveSummary: "執行摘要",
+        sources: "資料來源",
+        source: "來源",
+        generated: "產生日期",
+        sourceCount: "來源數",
+        page: "頁",
+      }
+    : {
+        executiveSummary: "Executive Summary",
+        sources: "Sources",
+        source: "Source",
+        generated: "Generated",
+        sourceCount: "Sources",
+        page: "Page",
+      };
+}
+
+function buildWordReportContentTypesXml(imageExtensions = []) {
+  const imageDefaults = [...new Set(imageExtensions)]
+    .map((extension) => {
+      const contentType = extension === "png" ? "image/png" : extension === "gif" ? "image/gif" : "image/jpeg";
+      return `<Default Extension="${escapeXml(extension)}" ContentType="${contentType}"/>`;
+    })
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  ${imageDefaults}
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
+  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+}
+
+function buildWordReportRootRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function buildWordReportAppXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Open Copilot</Application>
+  <AppVersion>1.0</AppVersion>
+</Properties>`;
+}
+
+function buildWordReportCoreXml(title) {
+  const createdAt = new Date().toISOString();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(title)}</dc:title>
+  <dc:creator>Open Copilot</dc:creator>
+  <cp:lastModifiedBy>Open Copilot</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${createdAt}</dcterms:modified>
+</cp:coreProperties>`;
+}
+
+function buildWordReportStylesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos" w:eastAsia="Microsoft JhengHei"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-US" w:eastAsia="zh-TW"/></w:rPr></w:rPrDefault>
+    <w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:color w:val="263247"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="CoverTitle"><w:name w:val="Cover Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="2400" w:after="280"/><w:jc w:val="left"/></w:pPr><w:rPr><w:b/><w:color w:val="102A43"/><w:sz w:val="54"/><w:szCs w:val="54"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="560"/></w:pPr><w:rPr><w:color w:val="486581"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="420" w:after="180"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:color w:val="0B6E75"/><w:sz w:val="34"/><w:szCs w:val="34"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="300" w:after="120"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:color w:val="243B53"/><w:sz w:val="27"/><w:szCs w:val="27"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="ReportLead"><w:name w:val="Report Lead"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="220"/><w:shd w:val="clear" w:color="auto" w:fill="E6FFFA"/><w:ind w:left="220" w:right="220"/></w:pPr><w:rPr><w:b/><w:color w:val="234E52"/><w:sz w:val="23"/><w:szCs w:val="23"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="ListBullet"><w:name w:val="List Bullet"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="480" w:hanging="240"/><w:spacing w:after="90"/></w:pPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:jc w:val="center"/><w:spacing w:after="100"/></w:pPr><w:rPr><w:i/><w:color w:val="627D98"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Source"><w:name w:val="Source"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="180"/></w:pPr><w:rPr><w:color w:val="627D98"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
+</w:styles>`;
+}
+
+function buildWordReportSettingsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:zoom w:percent="100"/>
+  <w:defaultTabStop w:val="720"/>
+  <w:updateFields w:val="true"/>
+</w:settings>`;
+}
+
+function buildWordReportDocumentRelsXml(imageAssets = []) {
+  const imageRelationships = imageAssets
+    .map((asset) => `<Relationship Id="${escapeXml(asset.relationshipId)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${escapeXml(asset.path.split("/").pop() || "")}"/>`)
+    .join("");
+  const footerRelationshipId = "rIdFooter";
+  return {
+    footerRelationshipId,
+    xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+  ${imageRelationships}
+  <Relationship Id="${footerRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+</Relationships>`,
+  };
+}
+
+function buildWordReportTextRun(text, options = {}) {
+  const runProperties = [
+    options.bold ? "<w:b/>" : "",
+    options.italic ? "<w:i/>" : "",
+    options.color ? `<w:color w:val="${escapeXml(options.color)}"/>` : "",
+    options.size ? `<w:sz w:val="${Math.max(10, Number(options.size) || 22)}"/><w:szCs w:val="${Math.max(10, Number(options.size) || 22)}"/>` : "",
+  ].filter(Boolean).join("");
+  const textParts = String(text || "").split("\n");
+  const textXml = textParts
+    .map((part, index) => `${index ? "<w:br/>" : ""}<w:t xml:space="preserve">${escapeXml(part)}</w:t>`)
+    .join("");
+  return `<w:r>${runProperties ? `<w:rPr>${runProperties}</w:rPr>` : ""}${textXml}</w:r>`;
+}
+
+function buildWordReportParagraph(text, styleId = "Normal", options = {}) {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) {
+    return "";
+  }
+  const paragraphProperties = [
+    styleId ? `<w:pStyle w:val="${escapeXml(styleId)}"/>` : "",
+    options.keepNext ? "<w:keepNext/>" : "",
+    options.center ? "<w:jc w:val=\"center\"/>" : "",
+  ].filter(Boolean).join("");
+  return `<w:p>${paragraphProperties ? `<w:pPr>${paragraphProperties}</w:pPr>` : ""}${buildWordReportTextRun(normalizedText, options)}</w:p>`;
+}
+
+function buildWordReportPageBreak() {
+  return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+}
+
+function buildWordReportImageParagraph(asset, altText = "") {
+  if (!asset) {
+    return "";
+  }
+  return `<w:p>
+    <w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="80"/></w:pPr>
+    <w:r><w:drawing>
+      <wp:inline distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="${asset.widthEmu}" cy="${asset.heightEmu}"/>
+        <wp:effectExtent l="0" t="0" r="0" b="0"/>
+        <wp:docPr id="${asset.docPropertyId}" name="${escapeXml(altText || `Report image ${asset.docPropertyId}`)}" descr="${escapeXml(altText)}"/>
+        <wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
+        <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <pic:nvPicPr><pic:cNvPr id="${asset.docPropertyId}" name="${escapeXml(asset.path.split("/").pop() || "Report image")}"/><pic:cNvPicPr/></pic:nvPicPr>
+              <pic:blipFill><a:blip r:embed="${escapeXml(asset.relationshipId)}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+              <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${asset.widthEmu}" cy="${asset.heightEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+            </pic:pic>
+          </a:graphicData>
+        </a:graphic>
+      </wp:inline>
+    </w:drawing></w:r>
+  </w:p>`;
+}
+
+function buildWordReportFooterXml() {
+  const labels = getWordReportLabels();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p><w:pPr><w:jc w:val="center"/></w:pPr>
+    ${buildWordReportTextRun(`${labels.page} `, { color: "7B8794", size: 18 })}
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>
+  </w:p>
+</w:ftr>`;
+}
+
+function buildWordReportDocumentXml(report, sectionImageAssets = [], footerRelationshipId) {
+  const labels = getWordReportLabels();
+  const generatedDate = new Intl.DateTimeFormat(getUiLanguage(), { year: "numeric", month: "long", day: "numeric" }).format(new Date());
+  const body = [];
+  body.push(buildWordReportParagraph(report.title, "CoverTitle"));
+  if (report.subtitle) {
+    body.push(buildWordReportParagraph(report.subtitle, "Subtitle"));
+  }
+  body.push(buildWordReportParagraph(`${labels.sourceCount}: ${report.sources.length}  ·  ${labels.generated}: ${generatedDate}`, "Source"));
+  body.push(buildWordReportPageBreak());
+  body.push(buildWordReportParagraph(labels.executiveSummary, "Heading1"));
+  const summaryParagraphs = String(report.executiveSummary || "")
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  (summaryParagraphs.length ? summaryParagraphs : [report.sections[0]?.summary || report.sections[0]?.paragraphs?.[0] || ""])
+    .forEach((paragraph, index) => body.push(buildWordReportParagraph(paragraph, index === 0 ? "ReportLead" : "Normal")));
+
+  report.sections.forEach((section, index) => {
+    body.push(buildWordReportParagraph(`${index + 1}. ${section.heading}`, "Heading1"));
+    if (section.summary) {
+      body.push(buildWordReportParagraph(section.summary, "ReportLead"));
+    }
+    section.paragraphs.forEach((paragraph) => body.push(buildWordReportParagraph(paragraph, "Normal")));
+    section.bullets.forEach((bullet) => body.push(buildWordReportParagraph(`• ${bullet}`, "ListBullet")));
+    const imageAsset = sectionImageAssets[index];
+    if (imageAsset) {
+      body.push(buildWordReportImageParagraph(imageAsset, section.imageAlt || section.heading));
+      if (section.imageAlt) {
+        body.push(buildWordReportParagraph(section.imageAlt, "Caption"));
+      }
+    }
+    if (section.sourceUrl) {
+      body.push(buildWordReportParagraph(`${labels.source}: ${section.sourceUrl}`, "Source"));
+    }
+  });
+
+  if (report.sources.length) {
+    body.push(buildWordReportParagraph(labels.sources, "Heading1"));
+    report.sources.forEach((source, index) => {
+      const sourceLabel = source.title && source.url
+        ? `${source.title} — ${source.url}`
+        : source.title || source.url;
+      body.push(buildWordReportParagraph(`${index + 1}. ${sourceLabel}`, "Source"));
+    });
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:body>
+    ${body.join("")}
+    <w:sectPr>
+      <w:footerReference w:type="default" r:id="${escapeXml(footerRelationshipId)}"/>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+}
+
+async function getWordReportImageDimensions(bytes, mimeType) {
+  const fallback = { width: 1600, height: 900 };
+  if (!(bytes instanceof Uint8Array) || !bytes.length) {
+    return fallback;
+  }
+  const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType || "application/octet-stream" }));
+  try {
+    const image = await loadImageElement(objectUrl);
+    return {
+      width: image.naturalWidth || image.width || fallback.width,
+      height: image.naturalHeight || image.height || fallback.height,
+    };
+  } catch (_error) {
+    return fallback;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function resolveWordReportImageAsset(imageUrl, index) {
+  const sourceAsset = await resolvePowerPointImageAsset(imageUrl, index);
+  if (!sourceAsset) {
+    return null;
+  }
+  const dimensions = await getWordReportImageDimensions(sourceAsset.bytes, sourceAsset.mimeType);
+  const maxWidth = Math.round(5.9 * 914400);
+  const maxHeight = Math.round(3.6 * 914400);
+  const aspectRatio = Math.max(0.1, dimensions.width / Math.max(1, dimensions.height));
+  let widthEmu = maxWidth;
+  let heightEmu = Math.round(widthEmu / aspectRatio);
+  if (heightEmu > maxHeight) {
+    heightEmu = maxHeight;
+    widthEmu = Math.round(heightEmu * aspectRatio);
+  }
+  return {
+    ...sourceAsset,
+    path: `word/media/image${index}.${sourceAsset.extension}`,
+    relationshipId: `rIdImage${index}`,
+    docPropertyId: index,
+    widthEmu,
+    heightEmu,
+  };
+}
+
+async function buildWordReportFileBytes(reportSpec) {
+  const report = normalizeWordReportSpec(reportSpec);
+  if (!report) {
+    throw new Error(tl("noWordReportToExport"));
+  }
+
+  const sectionImageAssets = [];
+  const embeddedAssets = [];
+  for (let index = 0; index < report.sections.length; index += 1) {
+    const section = report.sections[index];
+    let asset = null;
+    if (section.imageUrl) {
+      try {
+        asset = await resolveWordReportImageAsset(section.imageUrl, embeddedAssets.length + 1);
+      } catch (_error) {
+        asset = null;
+      }
+    }
+    sectionImageAssets.push(asset);
+    if (asset) {
+      embeddedAssets.push(asset);
+    }
+  }
+  embeddedAssets.forEach((asset, index) => {
+    asset.relationshipId = `rIdImage${index + 1}`;
+    asset.docPropertyId = index + 1;
+  });
+
+  const relationships = buildWordReportDocumentRelsXml(embeddedAssets);
+  const entries = [
+    { name: "[Content_Types].xml", data: buildWordReportContentTypesXml(embeddedAssets.map((asset) => asset.extension)) },
+    { name: "_rels/.rels", data: buildWordReportRootRelsXml() },
+    { name: "docProps/app.xml", data: buildWordReportAppXml() },
+    { name: "docProps/core.xml", data: buildWordReportCoreXml(report.title) },
+    { name: "word/document.xml", data: buildWordReportDocumentXml(report, sectionImageAssets, relationships.footerRelationshipId) },
+    { name: "word/_rels/document.xml.rels", data: relationships.xml },
+    { name: "word/styles.xml", data: buildWordReportStylesXml() },
+    { name: "word/settings.xml", data: buildWordReportSettingsXml() },
+    { name: "word/footer1.xml", data: buildWordReportFooterXml() },
+    ...embeddedAssets.map((asset) => ({ name: asset.path, data: asset.bytes })),
+  ];
+  return createZipStore(entries);
+}
+
 function buildShareText(rawText, label = "") {
   const normalized = normalizeMarkdownText(rawText);
   if (!normalized) {
@@ -13920,6 +15663,24 @@ async function downloadMessagePowerPoint(messageId) {
   const bytes = await buildPowerPointFileBytes(deckSpec);
   downloadBinaryBlob(filename, bytes, POWERPOINT_MIME_TYPE);
   setStatus(tl("powerPointDownloaded", { file: filename }));
+}
+
+async function downloadMessageWordReport(messageId) {
+  const message = chatMessages.find((item) => String(item.id) === String(messageId));
+  if (!message) {
+    throw new Error(tl("messageNotFound"));
+  }
+
+  const reportSpec = normalizeWordReportSpec(message.generatedWordReportSpec);
+  if (!reportSpec) {
+    throw new Error(tl("noWordReportToExport"));
+  }
+
+  const filename = String(message.generatedFileName || "").trim()
+    || buildWordReportFilename(reportSpec.title, document.title || "source-report");
+  const bytes = await buildWordReportFileBytes(reportSpec);
+  downloadBinaryBlob(filename, bytes, WORD_REPORT_MIME_TYPE);
+  setStatus(tl("wordReportDownloaded", { file: filename }));
 }
 
 function scheduleConversationSave() {
@@ -14944,6 +16705,9 @@ function renderMessages() {
         const messageAttachments = message.role === "user" ? renderSentMessageAttachments(message.attachments) : "";
         const parsedStarterDrafts = message.role === "assistant" && !isTypingAssistant ? getStarterDraftsForMessage(message) : [];
         const hasAgentFlowPanel = message.role === "assistant" && message.flowRun;
+        const assistantDisplayContent = message.role === "assistant"
+          ? normalizeAssistantMarkdownForDisplay(message.content)
+          : String(message.content || "");
         const body =
           hasAgentFlowPanel
             ? renderAgentFlowPanel(message.flowRun)
@@ -14963,10 +16727,12 @@ function renderMessages() {
             ? (
                 parsedStarterDrafts.length
                   ? renderStarterDraftJsonBody(parsedStarterDrafts)
-                  : renderMarkdown(
-                      message.content,
-                      { messageId: message.id }
-                    )
+                  : renderAssistantMarkdown(assistantDisplayContent, {
+                      messageId: message.id,
+                      disabled: isGenerating,
+                      evidenceMode: message.evidenceMode === true,
+                      evidenceSource: message.evidenceSource || null,
+                    })
               )
             : `<div class="ollama-quick-user-text">${escapeHtml(message.content).replace(/\n/g, "<br>")}</div>${messageAttachments}`;
         const hasDraftCodeBlock = message.role === "assistant" && !isTypingAssistant ? hasStarterDraftCodeBlock(message) : false;
@@ -14976,6 +16742,9 @@ function renderMessages() {
           : "";
         const downloadablePowerPoint = message.role === "assistant" && !isTypingAssistant
           ? Boolean(normalizePowerPointDeckSpec(message.generatedDeckSpec))
+          : false;
+        const downloadableWordReport = message.role === "assistant" && !isTypingAssistant
+          ? Boolean(normalizeWordReportSpec(message.generatedWordReportSpec))
           : false;
         const showSaveStarterButton = !hasDraftCodeBlock && (
           parsedStarterDrafts.length || (
@@ -15021,6 +16790,11 @@ function renderMessages() {
               `<button class="ollama-quick-message-action-icon is-text-label" type="button" data-action="download-message-powerpoint" data-message-id="${message.id}" title="${escapeHtml(tl("downloadPowerPoint"))}" aria-label="${escapeHtml(tl("downloadPowerPoint"))}">PPTX</button>`
             );
           }
+          if (downloadableWordReport) {
+            actionButtons.unshift(
+              `<button class="ollama-quick-message-action-icon is-text-label" type="button" data-action="download-message-word-report" data-message-id="${message.id}" title="${escapeHtml(tl("downloadWordReport"))}" aria-label="${escapeHtml(tl("downloadWordReport"))}">DOCX</button>`
+            );
+          }
           if (isLatestAssistantMessage) {
             actionButtons.unshift(
               `<button class="ollama-quick-message-action-icon" type="button" data-action="download-chat-markdown" title="${escapeHtml(tl("downloadMarkdown"))}" aria-label="${escapeHtml(tl("downloadMarkdown"))}">↓</button>`
@@ -15034,7 +16808,7 @@ function renderMessages() {
           ? tl("assistantRole")
           : tl("userRole");
         return `
-          <article class="ollama-quick-message ${roleClass}">
+          <article class="ollama-quick-message ${roleClass}" data-message-id="${escapeHtml(String(message.id))}">
             <div class="ollama-quick-message-top">
               <div class="ollama-quick-message-role">${escapeHtml(roleLabel)}</div>
             </div>
@@ -15564,6 +17338,7 @@ function renderShell() {
   const floatingIconEnabled = currentConfig?.floatingIconEnabled !== false;
   const starterHoverTipsEnabled = currentConfig?.starterHoverTipsEnabled !== false;
   const teamsInlineActionEnabled = currentConfig?.teamsInlineActionEnabled !== false;
+  const evidenceModeEnabled = currentConfig?.evidenceModeEnabled === true;
   const pageContextControlLabel = hasConversationStarted() ? tl("contextLabelAfter") : tl("contextLabelBefore");
   const modelSelectionMode = getModelSelectionMode();
   const provider = getDefaultProvider();
@@ -15654,6 +17429,17 @@ function renderShell() {
           <div class="ollama-quick-status-wrap">
             <span class="ollama-quick-status-indicator" data-role="status-indicator"></span>
             <div class="ollama-quick-status" data-role="status">${escapeHtml(tl("ready"))}</div>
+            <button
+              class="ollama-quick-evidence-quick-toggle ${evidenceModeEnabled ? "is-active" : ""}"
+              type="button"
+              data-action="toggle-evidence-mode"
+              title="${escapeHtml(tl("evidenceModeHint"))}"
+              aria-label="${escapeHtml(`${tl("evidenceModeLabel")}: ${tl(evidenceModeEnabled ? "evidenceModeOn" : "evidenceModeOff")}`)}"
+              aria-pressed="${String(evidenceModeEnabled)}"
+            >
+              <span class="ollama-quick-evidence-quick-dot" aria-hidden="true"></span>
+              <span>${escapeHtml(tl("evidenceModeQuickLabel"))}</span>
+            </button>
           </div>
           ${renderBrowserContextBar({ pageCopilot: currentPageCopilot, providerName, providerModel })}
           ${renderBatchUrlQaMiniStatus()}
@@ -15719,6 +17505,18 @@ function renderShell() {
                 <option value="never" ${pageContextMode === "never" ? "selected" : ""}>${escapeHtml(tl("contextModeNever"))}</option>
               </select>
             </label>
+            <div class="ollama-quick-evidence-control ${evidenceModeEnabled ? "is-active" : ""}">
+              <div class="ollama-quick-evidence-control-top">
+                <span>${escapeHtml(tl("evidenceModeLabel"))}</span>
+                <button
+                  class="ollama-quick-evidence-toggle ${evidenceModeEnabled ? "is-active" : ""}"
+                  type="button"
+                  data-action="toggle-evidence-mode"
+                  aria-pressed="${String(evidenceModeEnabled)}"
+                >${escapeHtml(tl(evidenceModeEnabled ? "evidenceModeOn" : "evidenceModeOff"))}</button>
+              </div>
+              <div class="ollama-quick-evidence-control-hint">${escapeHtml(tl("evidenceModeHint"))}</div>
+            </div>
           </div>
           <div class="ollama-quick-include-panel">
             <button class="ollama-quick-secondary ollama-quick-include-trigger" type="button" data-action="open-browser-tab-picker">${escapeHtml(attachedBrowserTabs.length ? tl("changeBrowserTabs") : tl("addBrowserTabs"))}</button>
@@ -17276,8 +19074,12 @@ async function runAgentFlow(starter, modelOverride = "", flowOptions = {}) {
         throw new Error(getHtmlGenerationCopy().landingPowerPointNoDeck);
       }
       const sourceImages = await collectPowerPointSourceImageCandidates(flowOptions.powerPointContextOptions || {});
+      const sourceReferences = await collectArtifactSourceReferences(flowOptions.powerPointContextOptions || {});
       const enrichedDeckSpec = applyPowerPointTemplateOptions(
-        applyRequiredPowerPointSourceImages(deckSpec, sourceImages),
+        applyRequiredPowerPointSourceReferences(
+          applyRequiredPowerPointSourceImages(deckSpec, sourceImages),
+          sourceReferences
+        ),
         flowOptions.powerPointContextOptions || {}
       );
       const fileName = buildPowerPointFilename(enrichedDeckSpec.title, document.title || "presentation");
@@ -17533,6 +19335,31 @@ async function toggleQuickConfigFlag(configKey, enabledStatusKey, disabledStatus
   setStatus(tl(nextValue ? enabledStatusKey : disabledStatusKey));
 }
 
+async function setEvidenceModeEnabled(enabled, options = {}) {
+  const nextValue = enabled === true;
+  const result = await runtimeMessage({
+    type: "ollama:set-config",
+    config: { evidenceModeEnabled: nextValue },
+  });
+  if (!result?.ok) {
+    setStatus(result?.error || tl("loadConfigFailed"));
+    return false;
+  }
+
+  currentConfig = {
+    ...(currentConfig || {}),
+    ...(result.config || {}),
+    evidenceModeEnabled: nextValue,
+  };
+  if (nextValue && options.keepPageContextMode !== true) {
+    pageContextMode = "always";
+  }
+  renderShell();
+  scheduleConversationSave();
+  setStatus(tl(nextValue ? "evidenceModeEnabledStatus" : "evidenceModeDisabledStatus"));
+  return true;
+}
+
 async function updateStarterPreferenceConfig(patch) {
   const result = await runtimeMessage({ type: "ollama:set-config", config: patch });
   if (!result?.ok) {
@@ -17715,6 +19542,9 @@ async function activateStarterEntry(starter) {
 
   pendingSuggestedStarterAction = null;
   const executionPlan = resolveStarterExecutionPlan(starter);
+  if (starter.starterKey === "multiPageWordReport") {
+    pageContextMode = "always";
+  }
   if (starter.starterKey === "landingPowerPoint" || agentFlowIncludesPowerPoint(starter)) {
     pageContextMode = "always";
     clearPendingStarterExecution();
@@ -17809,6 +19639,31 @@ async function handleClick(event) {
 
   if (action === "toggle-teams-inline-action") {
     await toggleQuickConfigFlag("teamsInlineActionEnabled", "teamsInlineActionEnabledStatus", "teamsInlineActionDisabledStatus");
+    return;
+  }
+
+  if (action === "toggle-evidence-mode") {
+    await setEvidenceModeEnabled(currentConfig?.evidenceModeEnabled !== true);
+    return;
+  }
+
+  if (action === "reveal-evidence") {
+    const article = actionNode.closest(".ollama-quick-message[data-message-id]");
+    const panel = actionNode.closest("[data-evidence-message-id]");
+    const messageId = article?.dataset.messageId || panel?.dataset.evidenceMessageId || "";
+    const evidenceId = normalizeEvidenceId(actionNode.dataset.evidenceId || "");
+    const evidence = getMessageEvidenceItem(messageId, evidenceId);
+    if (!evidence) {
+      setStatus(tl("evidenceNotFound", { id: evidenceId || "?" }));
+      return;
+    }
+    const sourceTarget = findEvidenceTargetElement(evidence.quote);
+    if (!sourceTarget) {
+      setStatus(tl("evidenceNotFound", { id: evidence.id }));
+      return;
+    }
+    highlightEvidenceTarget(sourceTarget);
+    setStatus(tl("evidenceLocated", { id: evidence.id }));
     return;
   }
 
@@ -18080,6 +19935,15 @@ async function handleClick(event) {
       await downloadMessagePowerPoint(actionNode.dataset.messageId || "");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : tl("exportPowerPointFailed"));
+    }
+    return;
+  }
+
+  if (action === "download-message-word-report") {
+    try {
+      await downloadMessageWordReport(actionNode.dataset.messageId || "");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : tl("exportWordReportFailed"));
     }
     return;
   }
@@ -18981,15 +20845,26 @@ async function handleClick(event) {
       return;
     }
 
+    const followupSource = actionNode.dataset.followupSource || "message";
+    const followupKey = actionNode.dataset.followupKey || "";
     const messageId = actionNode.dataset.messageId || "";
     const followupIndex = Number.parseInt(actionNode.dataset.followupIndex || "-1", 10);
-    const message = chatMessages.find((item) => String(item.id) === String(messageId));
-    if (!message) {
+    let sourceContent = "";
+    if (followupSource === "perspective") {
+      const stage = latestPerspectiveRun?.stages?.find((item) => item.id === followupKey);
+      sourceContent = followupKey === "final"
+        ? String(latestPerspectiveRun?.finalContent || "")
+        : String(stage?.content || "");
+    } else {
+      const message = chatMessages.find((item) => String(item.id) === String(messageId));
+      sourceContent = String(message?.content || "");
+    }
+    if (!sourceContent) {
       setStatus(tl("messageNotFound"));
       return;
     }
 
-    const followupData = extractMessageQuickFollowups(message.content);
+    const followupData = extractMessageQuickFollowups(sourceContent);
     const selectedFollowup = Array.isArray(followupData.actions) ? followupData.actions[followupIndex] : null;
     if (!selectedFollowup?.label) {
       setStatus(tl("messageNotFound"));
@@ -18997,20 +20872,10 @@ async function handleClick(event) {
     }
 
     const followupPrompt = tl("messageFollowupPrompt", { action: selectedFollowup.label });
-    const completed = await sendCurrentPrompt({
+    await sendCurrentPrompt({
       userMessageOverride: followupPrompt,
       displayMessageOverride: selectedFollowup.label,
     });
-    if (!completed) {
-      return;
-    }
-
-    if (await requestConfirmation(tl("messageFollowupSkillConfirm"), {
-      title: tl("customStarterBuilderTitle"),
-      confirmLabel: tl("messageFollowupSkillConfirmAction"),
-    })) {
-      openCustomStarterBuilderFromFollowup(selectedFollowup.label);
-    }
     return;
   }
 
@@ -19170,7 +21035,11 @@ async function handleClick(event) {
     try {
       const starterDrafts = getStarterDraftsForMessage(message);
       await navigator.clipboard.writeText(
-        starterDrafts.length ? serializeStarterDraftsForExport(starterDrafts) : message.content
+        starterDrafts.length
+          ? serializeStarterDraftsForExport(starterDrafts)
+          : message.role === "assistant"
+            ? normalizeAssistantMarkdownForDisplay(message.content)
+            : message.content
       );
       setStatus(tl("copiedResponse"));
     } catch {
@@ -19190,7 +21059,7 @@ async function handleClick(event) {
     const starterDrafts = getStarterDraftsForMessage(message);
     const content = starterDrafts.length
       ? serializeStarterDraftsForExport(starterDrafts)
-      : message.content;
+      : normalizeAssistantMarkdownForDisplay(message.content);
     await shareTextContent(content, {
       title: document.title || "Open Copilot",
       label: tl("assistantRole"),
@@ -19233,6 +21102,11 @@ async function handleChange(event) {
 
   if (target instanceof HTMLSelectElement && target.dataset.role === "page-context-mode") {
     pageContextMode = normalizePageContextMode(target.value);
+    if (pageContextMode !== "always" && currentConfig?.evidenceModeEnabled === true) {
+      await setEvidenceModeEnabled(false, { keepPageContextMode: true });
+      setStatus(tl("pageContextModeUpdated", { mode: getPageContextModeLabel(pageContextMode) }));
+      return;
+    }
     setStatus(tl("pageContextModeUpdated", { mode: getPageContextModeLabel(pageContextMode) }));
     renderShell();
     scheduleConversationSave();
@@ -19735,6 +21609,24 @@ async function sendCurrentPrompt(options = {}) {
   }
 
   const outputArtifactType = getStarterOutputArtifactType(pendingStarter);
+  const evidenceModeForRequest = currentConfig?.evidenceModeEnabled === true && !outputArtifactType;
+  contextOptions = {
+    ...contextOptions,
+    evidenceMode: evidenceModeForRequest,
+    forceIncludeCurrentPageContext: evidenceModeForRequest || contextOptions.forceIncludeCurrentPageContext === true,
+  };
+  const evidenceSource = evidenceModeForRequest
+    ? (() => {
+        const source = getPageContext(true, contextOptions);
+        return {
+          title: source.title || document.title || "",
+          url: source.url || window.location.href,
+          selection: source.selection || "",
+          pageText: source.pageText || "",
+          capturedAt: new Date().toISOString(),
+        };
+      })()
+    : null;
   if (outputArtifactType === "pptx") {
     contextOptions = {
       ...contextOptions,
@@ -19743,6 +21635,16 @@ async function sendCurrentPrompt(options = {}) {
   }
   const isDownloadArtifactStarter = Boolean(outputArtifactType);
   const copy = getHtmlGenerationCopy();
+  const artifactGenerationSteps = outputArtifactType === "pptx"
+    ? getLandingPowerPointGenerationSteps()
+    : outputArtifactType === "docx"
+      ? getWordReportGenerationSteps()
+      : getLandingHtmlGenerationSteps();
+  const artifactPreparingDetail = outputArtifactType === "pptx"
+    ? copy.landingPowerPointPreparing
+    : outputArtifactType === "docx"
+      ? copy.wordReportPreparing
+      : copy.landingHtmlPreparing;
   const baseMessageId = Date.now();
   const assistantMessageId = baseMessageId + 1;
   chatMessages.push({ id: baseMessageId, role: "user", content: displayMessage, attachments: outgoingAttachments });
@@ -19754,15 +21656,22 @@ async function sendCurrentPrompt(options = {}) {
           content: "",
           generatedHtml: "",
           generatedDeckSpec: null,
+          generatedWordReportSpec: null,
           generatedArtifactType: outputArtifactType,
           htmlGenerationJob: createHtmlGenerationJob({
             title: pendingStarter?.label || copy.title,
             artifactType: outputArtifactType,
-            steps: outputArtifactType === "pptx" ? getLandingPowerPointGenerationSteps() : getLandingHtmlGenerationSteps(),
-            detail: outputArtifactType === "pptx" ? copy.landingPowerPointPreparing : copy.landingHtmlPreparing,
+            steps: artifactGenerationSteps,
+            detail: artifactPreparingDetail,
           }),
         }
-      : { id: assistantMessageId, role: "assistant", content: "" }
+      : {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          evidenceMode: evidenceModeForRequest,
+          evidenceSource,
+        }
   );
   isGenerating = true;
   renderShell();
@@ -19784,7 +21693,11 @@ async function sendCurrentPrompt(options = {}) {
       setHtmlGenerationJobStage(
         assistantMessageId,
         "finalize",
-        outputArtifactType === "pptx" ? copy.landingPowerPointPackaging : copy.landingHtmlPackaging
+        outputArtifactType === "pptx"
+          ? copy.landingPowerPointPackaging
+          : outputArtifactType === "docx"
+            ? copy.wordReportPackaging
+            : copy.landingHtmlPackaging
       );
       const assistantMessage = getChatMessageById(assistantMessageId);
       const rawResponse = String(assistantMessage?.htmlGenerationJob?.rawText || "").trim();
@@ -19794,8 +21707,12 @@ async function sendCurrentPrompt(options = {}) {
           throw new Error(copy.landingPowerPointNoDeck);
         }
         const sourceImages = await collectPowerPointSourceImageCandidates(contextOptions);
+        const sourceReferences = await collectArtifactSourceReferences(contextOptions);
         const enrichedDeckSpec = applyPowerPointTemplateOptions(
-          applyRequiredPowerPointSourceImages(deckSpec, sourceImages),
+          applyRequiredPowerPointSourceReferences(
+            applyRequiredPowerPointSourceImages(deckSpec, sourceImages),
+            sourceReferences
+          ),
           contextOptions
         );
         const fileName = buildPowerPointFilename(enrichedDeckSpec.title, document.title || "presentation");
@@ -19803,6 +21720,25 @@ async function sendCurrentPrompt(options = {}) {
           status: "complete",
           summary: copy.landingPowerPointReady,
           generatedDeckSpec: enrichedDeckSpec,
+          generatedArtifactType: outputArtifactType,
+          fileName,
+        });
+      } else if (outputArtifactType === "docx") {
+        const reportSpec = extractWordReportSpecFromText(rawResponse);
+        if (!reportSpec) {
+          throw new Error(copy.wordReportNoReport);
+        }
+        const sourceImages = await collectPowerPointSourceImageCandidates(contextOptions);
+        const sourceReferences = await collectArtifactSourceReferences(contextOptions);
+        const enrichedReportSpec = applyRequiredWordReportSourceReferences(
+          applyRequiredWordReportSourceImages(reportSpec, sourceImages),
+          sourceReferences
+        );
+        const fileName = buildWordReportFilename(enrichedReportSpec.title, document.title || "source-report");
+        setHtmlGenerationJobStage(assistantMessageId, "finalize", copy.wordReportReady, {
+          status: "complete",
+          summary: copy.wordReportReady,
+          generatedWordReportSpec: enrichedReportSpec,
           generatedArtifactType: outputArtifactType,
           fileName,
         });
@@ -19915,7 +21851,9 @@ function updateAssistantDraft(text) {
       last.htmlGenerationJob.completedStepIds = ["source"];
       last.htmlGenerationJob.detail = artifactType === "pptx"
         ? getHtmlGenerationCopy().landingPowerPointGenerating
-        : getHtmlGenerationCopy().landingHtmlGenerating;
+        : artifactType === "docx"
+          ? getHtmlGenerationCopy().wordReportGenerating
+          : getHtmlGenerationCopy().landingHtmlGenerating;
     }
     scheduleMessagesRender();
     scheduleConversationSave();
@@ -20073,6 +22011,9 @@ async function bootstrap() {
 
   try {
     await loadConfig();
+    if (currentConfig?.evidenceModeEnabled === true) {
+      pageContextMode = "always";
+    }
     await loadModels();
     await loadSavedTaskReminders().catch(() => {});
     await loadLauncherPosition();
@@ -20124,6 +22065,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     changes.uiLanguage ||
     changes.replyLanguage ||
     changes.settingsTheme ||
+    changes.chatFontSize ||
     changes.systemPrompt ||
     changes.multiPerspectiveProfiles ||
     changes.githubApiKeyConfigured ||
@@ -20136,7 +22078,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     changes.starterLastUsedAt ||
     changes.floatingIconEnabled ||
     changes.starterHoverTipsEnabled ||
-    changes.teamsInlineActionEnabled
+    changes.teamsInlineActionEnabled ||
+    changes.evidenceModeEnabled
   ) {
     bootstrap().catch(() => {});
   }

@@ -57,6 +57,7 @@ It is not an official GitHub Copilot provider integration, and it is not a hoste
 - Use the current page as prompt context
 - Pull in selected text from the page
 - Stream assistant responses
+- Verify current-page claims with Evidence Mode citations that jump back to highlighted source text
 - Accept image and text-file attachments
 - Render Mermaid code blocks as diagrams
 - Offer built-in starter prompts / starter skills
@@ -413,6 +414,7 @@ Open Copilot 的核心目標，是把「任何網頁上的閱讀、整理、提�
 - 使用目前頁面的標題、URL、meta description、標題層級與部分可見文字作為 prompt context
 - 把目前反白文字一鍵帶入輸入框
 - 支援串流回覆
+- 可用 Evidence Mode 驗證目前頁面引文，點擊引用會跳回並高亮原文
 - 支援圖片附件與文字檔附件
 - 可渲染模型輸出的 Mermaid 圖表
 - 內建多組 starter prompts / starter skills

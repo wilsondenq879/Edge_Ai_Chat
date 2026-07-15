@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Evidence Mode split preview</title>
+    <link rel="stylesheet" href="../src/injected.css" />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #141515;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="ollama-quick-chat-host"
+      class="is-view-split is-panel-open"
+      data-panel-view-mode="split"
+      data-theme="dark"
+      style="--ollama-quick-split-pane-width: 430px; --ollama-host-scale: 1"
+    >
+      <div class="ollama-quick-shell">
+        <section class="ollama-quick-panel is-open is-view-split" data-role="panel">
+          <header class="ollama-quick-header">
+            <div class="ollama-quick-header-main">
+              <div class="ollama-quick-eyebrow">快速工具</div>
+              <h2>Open Copilot</h2>
+              <div class="ollama-quick-view-switch" role="group" aria-label="Open Copilot view mode">
+                <button class="ollama-quick-view-mode" type="button">小窗</button>
+                <button class="ollama-quick-view-mode is-active" type="button">分割</button>
+                <button class="ollama-quick-view-mode" type="button">大型</button>
+              </div>
+            </div>
+            <div class="ollama-quick-header-actions">
+              <button class="ollama-quick-icon-button" type="button" aria-label="選單">☰</button>
+              <button class="ollama-quick-icon-button ollama-quick-danger-icon-button" type="button" aria-label="清除">⌫</button>
+              <button class="ollama-quick-icon-button" type="button" aria-label="最大化">□</button>
+              <button class="ollama-quick-icon-button" type="button" aria-label="設定">⚙</button>
+              <button class="ollama-quick-icon-button" type="button" aria-label="收合">−</button>
+            </div>
+          </header>
+          <div class="ollama-quick-workspace">
+            <div class="ollama-quick-main-pane">
+              <div class="ollama-quick-status-wrap">
+                <span class="ollama-quick-status-indicator" data-role="status-indicator"></span>
+                <div class="ollama-quick-status" data-role="status">已就緒。</div>
+                <button
+                  class="ollama-quick-evidence-quick-toggle"
+                  type="button"
+                  data-action="toggle-evidence-mode"
+                  aria-label="Evidence Mode: 關閉"
+                  aria-pressed="false"
+                >
+                  <span class="ollama-quick-evidence-quick-dot" aria-hidden="true"></span>
+                  <span>證據</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <script>
+      document.querySelector("[data-action='toggle-evidence-mode']").addEventListener("click", (event) => {
+        const button = event.currentTarget;
+        const isActive = button.classList.toggle("is-active");
+        button.setAttribute("aria-pressed", String(isActive));
+        button.setAttribute("aria-label", `Evidence Mode: ${isActive ? "開啟" : "關閉"}`);
+      });
+    </script>
+  </body>
+</html>

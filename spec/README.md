@@ -31,6 +31,8 @@
 16. [PowerPoint Starter And Export](./powerpoint-starter-and-export.md)
 17. [URL(s) to Sales Kit PPTX Flow](./url-to-sales-kit-pptx-flow.md)
 18. [Investment Proposal Builder](./investment-proposal-builder.md)
+19. [Multi-page Word Report Starter](./multi-page-word-report-starter.md)
+20. [Evidence Mode](./evidence-mode.md)
 
 ## 主要原始碼對照
 
@@ -57,11 +59,13 @@
 | Batch URL QA | 聊天面板 workflow + settings logs | 批次讀網址、產生 grounded FAQ、輸出單一 JSONL、記錄 job 狀態 |
 | Landing Page Builder | 聊天面板 starter workflow | 分析來源頁面、顯示帶圖 template selector、依選定版型生成 landing page |
 | PowerPoint Starter Export | 聊天面板 starter workflow | 把來源內容整理成 slide JSON，並匯出可開啟的 `.pptx` |
+| Multi-page Word Report | 聊天面板 starter workflow | 整合目前頁面、最多五個分頁與文件，匯出有圖片與來源清單的 `.docx` |
 | URL(s) to Sales Kit PPTX | 聊天面板 starter workflow | 收集一到多個產品 URL，抽取頁面資產，生成 sales kit `.pptx` |
 | Investment Proposal Builder | 聊天面板 starter -> 獨立 extension 視窗 | 填寫投資抵減提案資料，生成附表6與附表7 `.docx` |
 | Notifications | settings | Telegram / LINE / Teams / Slack / Discord 測試與完成通知 |
 | UI Localization | popup + settings + in-page panel | `uiLanguage` 控制介面語言，`replyLanguage` 控制模型回覆語言 |
 | Teams Inline Action | Microsoft Teams 頁面 | hover 訊息時顯示 `Send to Open Copilot` 動作 |
+| Evidence Mode | 聊天面板側欄與回答 | 逐字引文驗證、來源卡片、點擊跳回目前頁面並高亮 |
 
 ## 對 AI 重建者的要求
 
@@ -86,4 +90,6 @@
 - Tools tab 可從 extension origin 開啟 JSONL QA Editor 與 Knowledge Base QA Tester。
 - Batch URL QA 已改為輸出 `.jsonl`，並支援 job logs、取消執行、唯一檔名與完成通知。
 - Investment Proposal Builder 可由 starter 開獨立視窗，生成附表6與附表7 `.docx`。
+- `landingPowerPoint` 已強化成多來源故事線、逐頁來源追蹤與語意圖片配對。
+- `multiPageWordReport` 可把目前頁面、加入分頁與文件整理成一般用途的圖文 `.docx` 報告。
 - Teams 頁面支援 inline `Send to Open Copilot` hover action。

@@ -14,6 +14,12 @@ const POPUP_I18N = {
     selected: "已選取",
     useInGitHub: "用於 GitHub",
     foundModels: "找到 {count} 個模型。",
+    chatFontSize: "對話文字大小",
+    chatFontSizeHint: "調整網頁面板中的回答文字。",
+    chatFontSizeSmall: "小字",
+    chatFontSizeMedium: "中字",
+    chatFontSizeLarge: "大字",
+    chatFontSizeSaved: "文字大小已更新。",
   },
   en: {
     pageTitle: "Open Copilot",
@@ -30,6 +36,12 @@ const POPUP_I18N = {
     selected: "Selected",
     useInGitHub: "Use in GitHub",
     foundModels: "Found {count} model(s).",
+    chatFontSize: "Chat text size",
+    chatFontSizeHint: "Changes the answer text in the page panel.",
+    chatFontSizeSmall: "Small",
+    chatFontSizeMedium: "Medium",
+    chatFontSizeLarge: "Large",
+    chatFontSizeSaved: "Text size updated.",
   },
   ja: {
     pageTitle: "Open Copilot",
@@ -170,7 +182,9 @@ Object.assign(POPUP_I18N.ko, {
 });
 
 let popupLocale = POPUP_I18N["zh-TW"];
+let popupConfig = {};
 const SETTINGS_THEME_OPTIONS = new Set(["system", "dark", "light"]);
+const CHAT_FONT_SIZE_OPTIONS = new Set(["small", "medium", "large"]);
 const SYSTEM_THEME_MEDIA_QUERY =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: light)")
@@ -193,6 +207,15 @@ function applyPopupTranslations() {
   document.getElementById("openOptions").textContent = tp("settings");
   document.getElementById("popupModelsTitle").textContent = tp("models");
   document.getElementById("refreshModels").textContent = tp("refresh");
+  document.getElementById("popupFontSizeLabel").textContent = tp("chatFontSize");
+  document.getElementById("popupFontSizeHint").textContent = tp("chatFontSizeHint");
+  document.getElementById("popupFontSizeControl").setAttribute("aria-label", tp("chatFontSize"));
+  document.querySelectorAll("[data-chat-font-size]").forEach((button) => {
+    const size = button.dataset.chatFontSize;
+    const labelKey = size === "large" ? "chatFontSizeLarge" : size === "medium" ? "chatFontSizeMedium" : "chatFontSizeSmall";
+    button.title = tp(labelKey);
+    button.setAttribute("aria-label", tp(labelKey));
+  });
 }
 
 function normalizeSettingsTheme(value) {
@@ -214,6 +237,20 @@ function applyPopupTheme(value) {
   document.body.dataset.theme = resolveSettingsTheme(normalized);
 }
 
+function normalizeChatFontSize(value) {
+  const normalized = String(value || "small").trim().toLowerCase();
+  return CHAT_FONT_SIZE_OPTIONS.has(normalized) ? normalized : "small";
+}
+
+function applyChatFontSizeControl(value) {
+  const selectedSize = normalizeChatFontSize(value);
+  document.querySelectorAll("[data-chat-font-size]").forEach((button) => {
+    const isActive = button.dataset.chatFontSize === selectedSize;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
 function setMessage(message, isError = false) {
   const node = document.getElementById("popupMessage");
   node.textContent = message;
@@ -227,6 +264,8 @@ async function loadConfig() {
     popupLocale = POPUP_I18N[uiLanguage] || POPUP_I18N.en;
     applyPopupTranslations();
     applyPopupTheme(result.config.settingsTheme);
+    popupConfig = result.config;
+    applyChatFontSizeControl(result.config.chatFontSize);
     document.getElementById("endpointValue").textContent = result.config.ollamaUrl || tp("notConfigured");
   }
   return result?.config || {};
@@ -281,6 +320,33 @@ async function refreshModels() {
 
 document.getElementById("openOptions").addEventListener("click", () => chrome.runtime.openOptionsPage());
 document.getElementById("refreshModels").addEventListener("click", refreshModels);
+document.getElementById("popupFontSizeControl").addEventListener("click", async (event) => {
+  if (!(event.target instanceof Element)) {
+    return;
+  }
+  const button = event.target.closest("[data-chat-font-size]");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const chatFontSize = normalizeChatFontSize(button.dataset.chatFontSize);
+  applyChatFontSizeControl(chatFontSize);
+  try {
+    const result = await sendMessage({
+      type: "ollama:set-config",
+      config: { chatFontSize },
+    });
+    if (!result?.ok) {
+      throw new Error(result?.error || tp("selectFailed"));
+    }
+
+    popupConfig = result.config || { ...popupConfig, chatFontSize };
+    setMessage(tp("chatFontSizeSaved"));
+  } catch (error) {
+    applyChatFontSizeControl(popupConfig.chatFontSize);
+    setMessage(error instanceof Error ? error.message : String(error), true);
+  }
+});
 
 SYSTEM_THEME_MEDIA_QUERY?.addEventListener("change", () => {
   if (document.body.dataset.themePreference === "system") {
@@ -290,5 +356,6 @@ SYSTEM_THEME_MEDIA_QUERY?.addEventListener("change", () => {
 
 applyPopupTranslations();
 applyPopupTheme("system");
+applyChatFontSizeControl("small");
 setMessage(tp("loading"));
 refreshModels();

@@ -78,6 +78,7 @@ body.settings-page
       |- .ollama-quick-workspace
       |  |- .ollama-quick-main-pane
       |  |  |- .ollama-quick-status-wrap
+      |  |  |  |- button.ollama-quick-evidence-quick-toggle (split/compact only)
       |  |  |- [data-role='messages']
       |  |  |- .ollama-quick-compose
       |  |- aside.ollama-quick-task-rail (optional)

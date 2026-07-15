@@ -41,6 +41,7 @@ type Config = {
   floatingIconEnabled: boolean;
   starterHoverTipsEnabled: boolean;
   teamsInlineActionEnabled: boolean;
+  evidenceModeEnabled: boolean;
   telegramNotificationEnabled: boolean;
   telegramChatId: string;
   lineNotificationEnabled: boolean;
@@ -122,6 +123,14 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   attachments?: OutgoingAttachments;
+  evidenceMode?: boolean;
+  evidenceSource?: {
+    title: string;
+    url: string;
+    selection: string;
+    pageText: string;
+    capturedAt: string;
+  } | null;
   flowRun?: AgentFlowRun;
 };
 ```
