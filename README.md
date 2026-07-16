@@ -58,6 +58,7 @@ It is not an official GitHub Copilot provider integration, and it is not a hoste
 - Pull in selected text from the page
 - Stream assistant responses
 - Verify current-page claims with Evidence Mode citations that jump back to highlighted source text
+- Monitor webpages with Watchtower, including scheduled change checks, optional AI conditions, event history, and browser notifications
 - Accept image and text-file attachments
 - Render Mermaid code blocks as diagrams
 - Offer built-in starter prompts / starter skills
@@ -415,6 +416,7 @@ Open Copilot 的核心目標，是把「任何網頁上的閱讀、整理、提�
 - 把目前反白文字一鍵帶入輸入框
 - 支援串流回覆
 - 可用 Evidence Mode 驗證目前頁面引文，點擊引用會跳回並高亮原文
+- 可用 Watchtower 監控目前網頁，定期比對內容、用可選條件判斷重要變更並發出瀏覽器通知
 - 支援圖片附件與文字檔附件
 - 可渲染模型輸出的 Mermaid 圖表
 - 內建多組 starter prompts / starter skills

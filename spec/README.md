@@ -33,6 +33,7 @@
 18. [Investment Proposal Builder](./investment-proposal-builder.md)
 19. [Multi-page Word Report Starter](./multi-page-word-report-starter.md)
 20. [Evidence Mode](./evidence-mode.md)
+21. [Watchtower Web Monitoring Agent](./watchtower-web-monitoring.md)
 
 ## 主要原始碼對照
 
@@ -66,6 +67,7 @@
 | UI Localization | popup + settings + in-page panel | `uiLanguage` 控制介面語言，`replyLanguage` 控制模型回覆語言 |
 | Teams Inline Action | Microsoft Teams 頁面 | hover 訊息時顯示 `Send to Open Copilot` 動作 |
 | Evidence Mode | 聊天面板側欄與回答 | 逐字引文驗證、來源卡片、點擊跳回目前頁面並高亮 |
+| Watchtower | 聊天面板 header + 背景排程 | 建立頁面 baseline、定期比對、條件式 Agent 判斷、事件與瀏覽器通知 |
 
 ## 對 AI 重建者的要求
 

@@ -43,6 +43,7 @@ Host
 必須包含：
 
 - Task inbox button
+- Watchtower web monitoring button
 - Use selection
 - Clear chat
 - Maximize / restore

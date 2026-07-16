@@ -87,6 +87,7 @@ body.settings-page
       |     |- .ollama-quick-include-panel x N
       |     |- .ollama-quick-starters-panel
       |- include/browser/local pickers (conditional)
+      |- .ollama-quick-watchtower-modal (conditional)
       |- custom starter builder (conditional)
       |- agent flow builder (conditional)
       |- batch URL QA builder (conditional)

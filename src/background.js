@@ -11,6 +11,8 @@ const LOCAL_META_KEY = "localWorkFolderMeta";
 const LATEST_CHAT_SESSION_KEY = "latestChatSession";
 const EXPORT_SEQUENCE_KEY = "chatExportSequence";
 const TASKS_STORAGE_KEY = "taskReminderItems";
+const WATCHTOWER_MONITORS_STORAGE_KEY = "watchtowerMonitorsV1";
+const WATCHTOWER_EVENTS_STORAGE_KEY = "watchtowerEventsV1";
 const BATCH_URL_QA_JOBS_KEY = "batchUrlQaJobs";
 const BATCH_URL_QA_OUTPUT_FORMATS = {
   jsonl: "jsonl",
@@ -31,6 +33,14 @@ const WORK_FOLDER_STARTERS_FILE = "starter-skills.json";
 const WORK_FOLDER_TASKS_FILE = "task-reminders.json";
 const TASK_ALARM_PREFIX = "task-reminder:";
 const TASK_NOTIFICATION_PREFIX = "task-notification:";
+const WATCHTOWER_ALARM_PREFIX = "watchtower-monitor:";
+const WATCHTOWER_NOTIFICATION_PREFIX = "watchtower-notification:";
+const WATCHTOWER_DEFAULT_INTERVAL_MINUTES = 60;
+const WATCHTOWER_MIN_INTERVAL_MINUTES = 15;
+const WATCHTOWER_MAX_INTERVAL_MINUTES = 10080;
+const WATCHTOWER_MAX_MONITORS = 50;
+const WATCHTOWER_MAX_EVENTS = 120;
+const WATCHTOWER_MAX_BASELINE_TEXT = 16000;
 const CONTEXT_MENU_ANALYZE_IMAGE_ID = "open-copilot-analyze-image";
 const CONTEXT_MENU_PASTE_SELECTION_ID = "open-copilot-paste-selection";
 const SUPPORTED_LOCAL_DOCUMENT_EXTENSIONS = new Set(["txt", "md", "markdown", "json", "csv"]);
@@ -41,6 +51,7 @@ const DEFAULT_BATCH_URL_QA_COUNT = 5;
 const LOCAL_SECRET_CONFIG_KEY = "providerSecretConfig";
 const SECRET_CONFIG_FIELDS = ["githubApiKey", "geminiApiKey", "geminiEmbeddingApiKey", "azureOpenAiApiKey", "azureOpenAiEmbeddingApiKey", "telegramBotToken", "lineChannelAccessToken", "teamsWebhookUrl", "slackWebhookUrl", "discordWebhookUrl"];
 const CLIENT_REDACTED_CONFIG_FIELDS = [...SECRET_CONFIG_FIELDS, "lmStudioApiKey", "lmStudioEmbeddingApiKey"];
+const watchtowerRunLocks = new Set();
 
 const DEFAULT_SECRET_CONFIG = {
   githubApiKey: "",
@@ -871,6 +882,545 @@ async function deleteTaskRecord(taskId) {
     deletedId: normalizedTaskId,
     deleted: nextTasks.length !== tasks.length,
     tasks: nextTasks,
+  };
+}
+
+function createWatchtowerId() {
+  return `watch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeWatchtowerUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+    parsed.hash = "";
+    return parsed.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function normalizeWatchtowerInterval(value) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (!Number.isFinite(parsed)) {
+    return WATCHTOWER_DEFAULT_INTERVAL_MINUTES;
+  }
+  return Math.min(Math.max(parsed, WATCHTOWER_MIN_INTERVAL_MINUTES), WATCHTOWER_MAX_INTERVAL_MINUTES);
+}
+
+function normalizeWatchtowerContent(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[\t ]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, WATCHTOWER_MAX_BASELINE_TEXT);
+}
+
+function hashWatchtowerContent(value) {
+  const normalized = normalizeWatchtowerContent(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function computeWatchtowerDiff(previousValue, currentValue, maxLines = 12) {
+  const previousLines = normalizeWatchtowerContent(previousValue).split("\n").filter(Boolean);
+  const currentLines = normalizeWatchtowerContent(currentValue).split("\n").filter(Boolean);
+  const previousSet = new Set(previousLines);
+  const currentSet = new Set(currentLines);
+  const addedAll = currentLines.filter((line) => !previousSet.has(line));
+  const removedAll = previousLines.filter((line) => !currentSet.has(line));
+
+  return {
+    added: addedAll.slice(0, maxLines),
+    removed: removedAll.slice(0, maxLines),
+    addedCount: addedAll.length,
+    removedCount: removedAll.length,
+  };
+}
+
+function buildWatchtowerFallbackSummary(diff = {}) {
+  const parts = [];
+  if (Array.isArray(diff.added) && diff.added.length) {
+    parts.push(`新增：${diff.added.slice(0, 2).join(" / ")}`);
+  }
+  if (Array.isArray(diff.removed) && diff.removed.length) {
+    parts.push(`移除：${diff.removed.slice(0, 2).join(" / ")}`);
+  }
+  if (!parts.length) {
+    parts.push("頁面內容已變更。");
+  }
+  return normalizeTaskText(parts.join(" • "), 280);
+}
+
+function parseWatchtowerAgentDecision(value) {
+  const source = String(value || "").trim();
+  if (!source) {
+    return null;
+  }
+  const cleaned = source
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (typeof parsed?.relevant !== "boolean") {
+      return null;
+    }
+    return {
+      relevant: parsed.relevant,
+      summary: normalizeTaskText(parsed.summary || "", 280),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function normalizeWatchtowerMonitor(monitor = {}) {
+  if (!monitor || typeof monitor !== "object") {
+    return null;
+  }
+  const url = normalizeWatchtowerUrl(monitor.url || "");
+  if (!url) {
+    return null;
+  }
+  const createdAt = normalizeTaskIsoDate(monitor.createdAt || "") || new Date().toISOString();
+  const updatedAt = normalizeTaskIsoDate(monitor.updatedAt || "") || createdAt;
+  const allowedStatuses = new Set(["pending", "baseline", "unchanged", "changed", "ignored", "error"]);
+  const checkStatus = String(monitor.lastCheckStatus || "pending").trim().toLowerCase();
+
+  return {
+    id: normalizeTaskText(monitor.id || "", 120) || createWatchtowerId(),
+    url,
+    title: normalizeTaskText(monitor.title || url, 240),
+    condition: normalizeTaskText(monitor.condition || "", 800),
+    intervalMinutes: normalizeWatchtowerInterval(monitor.intervalMinutes),
+    enabled: monitor.enabled !== false,
+    contentHash: normalizeTaskText(monitor.contentHash || "", 80),
+    baselineText: normalizeWatchtowerContent(monitor.baselineText || ""),
+    createdAt,
+    updatedAt,
+    lastCheckedAt: normalizeTaskIsoDate(monitor.lastCheckedAt || ""),
+    lastChangedAt: normalizeTaskIsoDate(monitor.lastChangedAt || ""),
+    lastCheckStatus: allowedStatuses.has(checkStatus) ? checkStatus : "pending",
+    lastDecision: normalizeTaskText(monitor.lastDecision || "", 40),
+    lastSummary: normalizeTaskText(monitor.lastSummary || "", 280),
+    lastError: normalizeTaskText(monitor.lastError || "", 500),
+    changeCount: Math.max(0, Number.parseInt(String(monitor.changeCount || 0), 10) || 0),
+  };
+}
+
+function getPublicWatchtowerMonitor(monitor) {
+  const normalized = normalizeWatchtowerMonitor(monitor);
+  if (!normalized) {
+    return null;
+  }
+  const { baselineText: _baselineText, contentHash: _contentHash, ...publicMonitor } = normalized;
+  return publicMonitor;
+}
+
+function normalizeWatchtowerEvent(event = {}) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+  const monitorId = normalizeTaskText(event.monitorId || "", 120);
+  const url = normalizeWatchtowerUrl(event.url || "");
+  if (!monitorId || !url) {
+    return null;
+  }
+  return {
+    id: normalizeTaskText(event.id || "", 120) || `watch-event-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    monitorId,
+    url,
+    title: normalizeTaskText(event.title || url, 240),
+    condition: normalizeTaskText(event.condition || "", 800),
+    detectedAt: normalizeTaskIsoDate(event.detectedAt || "") || new Date().toISOString(),
+    relevant: event.relevant !== false,
+    summary: normalizeTaskText(event.summary || "", 280),
+    addedCount: Math.max(0, Number.parseInt(String(event.addedCount || 0), 10) || 0),
+    removedCount: Math.max(0, Number.parseInt(String(event.removedCount || 0), 10) || 0),
+    evaluationError: normalizeTaskText(event.evaluationError || "", 500),
+  };
+}
+
+async function getWatchtowerMonitors() {
+  const { [WATCHTOWER_MONITORS_STORAGE_KEY]: stored } = await chrome.storage.local.get(WATCHTOWER_MONITORS_STORAGE_KEY);
+  return (Array.isArray(stored) ? stored : [])
+    .map((item) => normalizeWatchtowerMonitor(item))
+    .filter(Boolean)
+    .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))
+    .slice(0, WATCHTOWER_MAX_MONITORS);
+}
+
+async function saveWatchtowerMonitors(monitors = []) {
+  const normalized = (Array.isArray(monitors) ? monitors : [])
+    .map((item) => normalizeWatchtowerMonitor(item))
+    .filter(Boolean)
+    .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))
+    .slice(0, WATCHTOWER_MAX_MONITORS);
+  await chrome.storage.local.set({ [WATCHTOWER_MONITORS_STORAGE_KEY]: normalized });
+  return normalized;
+}
+
+async function getWatchtowerEvents() {
+  const { [WATCHTOWER_EVENTS_STORAGE_KEY]: stored } = await chrome.storage.local.get(WATCHTOWER_EVENTS_STORAGE_KEY);
+  return (Array.isArray(stored) ? stored : [])
+    .map((item) => normalizeWatchtowerEvent(item))
+    .filter(Boolean)
+    .sort((left, right) => String(right.detectedAt || "").localeCompare(String(left.detectedAt || "")))
+    .slice(0, WATCHTOWER_MAX_EVENTS);
+}
+
+async function prependWatchtowerEvent(event) {
+  const normalized = normalizeWatchtowerEvent(event);
+  if (!normalized) {
+    return getWatchtowerEvents();
+  }
+  const events = await getWatchtowerEvents();
+  const next = [normalized, ...events.filter((item) => item.id !== normalized.id)].slice(0, WATCHTOWER_MAX_EVENTS);
+  await chrome.storage.local.set({ [WATCHTOWER_EVENTS_STORAGE_KEY]: next });
+  return next;
+}
+
+function buildWatchtowerAlarmName(monitorId) {
+  return `${WATCHTOWER_ALARM_PREFIX}${monitorId}`;
+}
+
+function getWatchtowerIdFromAlarmName(alarmName) {
+  return String(alarmName || "").startsWith(WATCHTOWER_ALARM_PREFIX)
+    ? String(alarmName).slice(WATCHTOWER_ALARM_PREFIX.length)
+    : "";
+}
+
+function buildWatchtowerNotificationId(monitorId) {
+  return `${WATCHTOWER_NOTIFICATION_PREFIX}${monitorId}`;
+}
+
+function getWatchtowerIdFromNotificationId(notificationId) {
+  return String(notificationId || "").startsWith(WATCHTOWER_NOTIFICATION_PREFIX)
+    ? String(notificationId).slice(WATCHTOWER_NOTIFICATION_PREFIX.length)
+    : "";
+}
+
+async function clearWatchtowerAlarm(monitorId) {
+  await chrome.alarms.clear(buildWatchtowerAlarmName(monitorId));
+}
+
+async function scheduleWatchtowerAlarm(monitor) {
+  const normalized = normalizeWatchtowerMonitor(monitor);
+  if (!normalized) {
+    return false;
+  }
+  await clearWatchtowerAlarm(normalized.id);
+  if (!normalized.enabled) {
+    return false;
+  }
+  chrome.alarms.create(buildWatchtowerAlarmName(normalized.id), {
+    delayInMinutes: normalized.intervalMinutes,
+    periodInMinutes: normalized.intervalMinutes,
+  });
+  return true;
+}
+
+async function restoreWatchtowerAlarms() {
+  const monitors = await getWatchtowerMonitors();
+  for (const monitor of monitors) {
+    await scheduleWatchtowerAlarm(monitor);
+  }
+}
+
+function buildWatchtowerSnapshotText(context = {}) {
+  return normalizeWatchtowerContent([
+    context.title ? `Title: ${context.title}` : "",
+    context.metaDescription ? `Description: ${context.metaDescription}` : "",
+    context.headings ? `Headings: ${context.headings}` : "",
+    context.pageText || "",
+  ].filter(Boolean).join("\n"));
+}
+
+async function getWatchtowerPageContext(monitor) {
+  const targetUrl = normalizeWatchtowerUrl(monitor?.url || "");
+  const tabs = await chrome.tabs.query({});
+  const matchingTab = tabs.find((tab) => Number.isFinite(Number(tab?.id)) && normalizeWatchtowerUrl(tab?.url || "") === targetUrl);
+  if (matchingTab?.id) {
+    try {
+      const response = await chrome.tabs.sendMessage(Number(matchingTab.id), {
+        type: "edge-ai-chat:get-page-context",
+        expandDetails: true,
+      });
+      if (response?.ok && response.context) {
+        return response.context;
+      }
+    } catch (_error) {
+      // Fall back to loading the URL in a temporary background tab.
+    }
+  }
+  return getPageContextFromUrl(targetUrl);
+}
+
+function buildWatchtowerAgentPrompt(monitor, diff) {
+  return [
+    "You are Watchtower, a webpage change monitoring agent.",
+    "Judge whether the detected change matches the user's observation condition.",
+    "Return one JSON object only: {\"relevant\": boolean, \"summary\": string}.",
+    "The summary must be concise, factual, and in the same language as the observation condition.",
+    `Page: ${monitor.title}`,
+    `URL: ${monitor.url}`,
+    `Observation condition: ${monitor.condition}`,
+    `Added lines (${diff.addedCount}):\n${diff.added.map((line) => `+ ${line}`).join("\n") || "(none)"}`,
+    `Removed lines (${diff.removedCount}):\n${diff.removed.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+  ].join("\n\n");
+}
+
+async function evaluateWatchtowerChange(monitor, diff) {
+  const fallbackSummary = buildWatchtowerFallbackSummary(diff);
+  if (!monitor.condition) {
+    return { relevant: true, summary: fallbackSummary, evaluationError: "" };
+  }
+
+  try {
+    const result = await generateWithConfiguredProvider(buildWatchtowerAgentPrompt(monitor, diff));
+    const decision = parseWatchtowerAgentDecision(result?.response || "");
+    if (!decision) {
+      throw new Error("The provider did not return a valid Watchtower decision.");
+    }
+    return {
+      relevant: decision.relevant,
+      summary: decision.summary || fallbackSummary,
+      evaluationError: "",
+    };
+  } catch (error) {
+    return {
+      relevant: true,
+      summary: fallbackSummary,
+      evaluationError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function updateWatchtowerMonitorRecord(monitorId, patch = {}) {
+  const monitors = await getWatchtowerMonitors();
+  const index = monitors.findIndex((item) => item.id === monitorId);
+  if (index < 0) {
+    return { monitor: null, monitors };
+  }
+  const updated = normalizeWatchtowerMonitor({ ...monitors[index], ...patch, updatedAt: new Date().toISOString() });
+  monitors[index] = updated;
+  const saved = await saveWatchtowerMonitors(monitors);
+  return {
+    monitor: saved.find((item) => item.id === monitorId) || updated,
+    monitors: saved,
+  };
+}
+
+async function runWatchtowerCheck(monitorId, options = {}) {
+  const normalizedId = normalizeTaskText(monitorId || "", 120);
+  if (!normalizedId) {
+    throw new Error("Watchtower monitor id is required.");
+  }
+  if (watchtowerRunLocks.has(normalizedId)) {
+    const monitors = await getWatchtowerMonitors();
+    return { monitor: getPublicWatchtowerMonitor(monitors.find((item) => item.id === normalizedId)), skipped: true, reason: "already-running" };
+  }
+
+  watchtowerRunLocks.add(normalizedId);
+  try {
+    const monitors = await getWatchtowerMonitors();
+    const monitor = monitors.find((item) => item.id === normalizedId);
+    if (!monitor) {
+      throw new Error("Watchtower monitor was not found.");
+    }
+    if (!monitor.enabled && options.force !== true) {
+      return { monitor: getPublicWatchtowerMonitor(monitor), skipped: true, reason: "paused" };
+    }
+
+    const context = await getWatchtowerPageContext(monitor);
+    const snapshotText = buildWatchtowerSnapshotText(context);
+    if (!snapshotText) {
+      throw new Error("Watchtower could not extract readable page content.");
+    }
+    const nowIso = new Date().toISOString();
+    const contentHash = hashWatchtowerContent(snapshotText);
+
+    if (!monitor.contentHash || !monitor.baselineText) {
+      const updated = await updateWatchtowerMonitorRecord(normalizedId, {
+        title: context?.title || monitor.title,
+        contentHash,
+        baselineText: snapshotText,
+        lastCheckedAt: nowIso,
+        lastCheckStatus: "baseline",
+        lastDecision: "baseline",
+        lastSummary: "Baseline captured.",
+        lastError: "",
+      });
+      return { monitor: getPublicWatchtowerMonitor(updated.monitor), changed: false, baselineCreated: true };
+    }
+
+    if (monitor.contentHash === contentHash) {
+      const updated = await updateWatchtowerMonitorRecord(normalizedId, {
+        lastCheckedAt: nowIso,
+        lastCheckStatus: "unchanged",
+        lastDecision: "unchanged",
+        lastError: "",
+      });
+      return { monitor: getPublicWatchtowerMonitor(updated.monitor), changed: false };
+    }
+
+    const diff = computeWatchtowerDiff(monitor.baselineText, snapshotText);
+    const decision = await evaluateWatchtowerChange(monitor, diff);
+    const status = decision.relevant ? "changed" : "ignored";
+    const event = normalizeWatchtowerEvent({
+      monitorId: monitor.id,
+      url: monitor.url,
+      title: context?.title || monitor.title,
+      condition: monitor.condition,
+      detectedAt: nowIso,
+      relevant: decision.relevant,
+      summary: decision.summary,
+      addedCount: diff.addedCount,
+      removedCount: diff.removedCount,
+      evaluationError: decision.evaluationError,
+    });
+    await prependWatchtowerEvent(event);
+    const updated = await updateWatchtowerMonitorRecord(normalizedId, {
+      title: context?.title || monitor.title,
+      contentHash,
+      baselineText: snapshotText,
+      lastCheckedAt: nowIso,
+      lastChangedAt: nowIso,
+      lastCheckStatus: status,
+      lastDecision: decision.relevant ? "relevant" : "ignored",
+      lastSummary: decision.summary,
+      lastError: decision.evaluationError,
+      changeCount: monitor.changeCount + 1,
+    });
+
+    if (decision.relevant) {
+      await chrome.notifications.create(buildWatchtowerNotificationId(normalizedId), {
+        type: "basic",
+        iconUrl: "assets/icons/icon-128.png",
+        title: `Watchtower · ${normalizeTaskText(context?.title || monitor.title, 120)}`,
+        message: normalizeTaskText(decision.summary || "Relevant webpage change detected.", 280),
+        priority: 1,
+      });
+    }
+
+    return {
+      monitor: getPublicWatchtowerMonitor(updated.monitor),
+      event,
+      changed: true,
+      relevant: decision.relevant,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const updated = await updateWatchtowerMonitorRecord(normalizedId, {
+      lastCheckedAt: new Date().toISOString(),
+      lastCheckStatus: "error",
+      lastDecision: "error",
+      lastError: message,
+    });
+    return { monitor: getPublicWatchtowerMonitor(updated.monitor), changed: false, error: message };
+  } finally {
+    watchtowerRunLocks.delete(normalizedId);
+  }
+}
+
+async function upsertWatchtowerMonitor(input = {}) {
+  const url = normalizeWatchtowerUrl(input.url || "");
+  if (!url) {
+    throw new Error("A valid http(s) URL is required.");
+  }
+  const monitors = await getWatchtowerMonitors();
+  const requestedId = normalizeTaskText(input.id || "", 120);
+  const index = monitors.findIndex((item) => item.id === requestedId || item.url === url);
+  if (index < 0 && monitors.length >= WATCHTOWER_MAX_MONITORS) {
+    throw new Error(`Watchtower supports up to ${WATCHTOWER_MAX_MONITORS} monitors.`);
+  }
+  const existing = index >= 0 ? monitors[index] : null;
+  const nowIso = new Date().toISOString();
+  const merged = normalizeWatchtowerMonitor({
+    ...existing,
+    ...input,
+    id: existing?.id || requestedId || createWatchtowerId(),
+    url,
+    title: input.title || existing?.title || url,
+    enabled: input.enabled !== false,
+    createdAt: existing?.createdAt || nowIso,
+    updatedAt: nowIso,
+  });
+  if (index >= 0) {
+    monitors[index] = merged;
+  } else {
+    monitors.push(merged);
+  }
+  await saveWatchtowerMonitors(monitors);
+  await scheduleWatchtowerAlarm(merged);
+  const check = await runWatchtowerCheck(merged.id, { force: true });
+  return {
+    monitor: check.monitor || getPublicWatchtowerMonitor(merged),
+    monitors: (await getWatchtowerMonitors()).map(getPublicWatchtowerMonitor).filter(Boolean),
+    events: await getWatchtowerEvents(),
+    check,
+  };
+}
+
+async function setWatchtowerMonitorEnabled(monitorId, enabled) {
+  const updated = await updateWatchtowerMonitorRecord(normalizeTaskText(monitorId || "", 120), { enabled: enabled === true });
+  if (!updated.monitor) {
+    throw new Error("Watchtower monitor was not found.");
+  }
+  await scheduleWatchtowerAlarm(updated.monitor);
+  return {
+    monitor: getPublicWatchtowerMonitor(updated.monitor),
+    monitors: updated.monitors.map(getPublicWatchtowerMonitor).filter(Boolean),
+    events: await getWatchtowerEvents(),
+  };
+}
+
+async function deleteWatchtowerMonitor(monitorId) {
+  const normalizedId = normalizeTaskText(monitorId || "", 120);
+  if (!normalizedId) {
+    throw new Error("Watchtower monitor id is required.");
+  }
+  const monitors = await getWatchtowerMonitors();
+  const nextMonitors = monitors.filter((item) => item.id !== normalizedId);
+  const events = (await getWatchtowerEvents()).filter((item) => item.monitorId !== normalizedId);
+  await saveWatchtowerMonitors(nextMonitors);
+  await chrome.storage.local.set({ [WATCHTOWER_EVENTS_STORAGE_KEY]: events });
+  await clearWatchtowerAlarm(normalizedId);
+  await chrome.notifications.clear(buildWatchtowerNotificationId(normalizedId)).catch(() => {});
+  return {
+    deleted: nextMonitors.length !== monitors.length,
+    deletedId: normalizedId,
+    monitors: nextMonitors.map(getPublicWatchtowerMonitor).filter(Boolean),
+    events,
+  };
+}
+
+async function getWatchtowerState() {
+  return {
+    monitors: (await getWatchtowerMonitors()).map(getPublicWatchtowerMonitor).filter(Boolean),
+    events: await getWatchtowerEvents(),
   };
 }
 
@@ -5683,6 +6233,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const config = await getConfig();
   await chrome.storage.sync.set(omitSecretConfig(config));
   await restoreTaskAlarms();
+  await restoreWatchtowerAlarms();
   await ensureContextMenus();
   await reinjectContentScriptsIntoOpenTabs();
 });
@@ -5693,6 +6244,9 @@ chrome.runtime.onStartup?.addListener(() => {
   });
   restoreTaskAlarms().catch((error) => {
     console.warn("[Edge AI Chat] Failed to restore task alarms on startup", error);
+  });
+  restoreWatchtowerAlarms().catch((error) => {
+    console.warn("[Edge AI Chat] Failed to restore Watchtower alarms on startup", error);
   });
   ensureContextMenus().catch((error) => {
     console.warn("[Edge AI Chat] Failed to restore context menus on startup", error);
@@ -5738,6 +6292,14 @@ chrome.contextMenus?.onClicked.addListener((info, tab) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
+  const watchtowerId = getWatchtowerIdFromAlarmName(alarm?.name || "");
+  if (watchtowerId) {
+    runWatchtowerCheck(watchtowerId).catch((error) => {
+      console.warn("[Edge AI Chat] Watchtower check failed", error);
+    });
+    return;
+  }
+
   const taskId = getTaskIdFromAlarmName(alarm?.name || "");
   if (!taskId) {
     return;
@@ -5792,6 +6354,21 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.notifications.onClicked.addListener((notificationId) => {
+  const watchtowerId = getWatchtowerIdFromNotificationId(notificationId);
+  if (watchtowerId) {
+    (async () => {
+      const monitors = await getWatchtowerMonitors();
+      const monitor = monitors.find((item) => item.id === watchtowerId);
+      if (monitor?.url) {
+        await chrome.tabs.create({ url: monitor.url });
+      }
+      await chrome.notifications.clear(notificationId);
+    })().catch((error) => {
+      console.warn("[Edge AI Chat] Failed to open Watchtower source", error);
+    });
+    return;
+  }
+
   const taskId = getTaskIdFromNotificationId(notificationId);
   if (!taskId) {
     return;
@@ -6051,6 +6628,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       case "task:delete": {
         sendResponse({ ok: true, ...(await deleteTaskRecord(message.taskId || "")) });
+        return;
+      }
+      case "watchtower:list": {
+        sendResponse({ ok: true, ...(await getWatchtowerState()) });
+        return;
+      }
+      case "watchtower:save": {
+        sendResponse({ ok: true, ...(await upsertWatchtowerMonitor(message.monitor || {})) });
+        return;
+      }
+      case "watchtower:set-enabled": {
+        sendResponse({ ok: true, ...(await setWatchtowerMonitorEnabled(message.monitorId || "", message.enabled === true)) });
+        return;
+      }
+      case "watchtower:check-now": {
+        const check = await runWatchtowerCheck(message.monitorId || "", { force: true });
+        sendResponse({ ok: true, check, ...(await getWatchtowerState()) });
+        return;
+      }
+      case "watchtower:delete": {
+        sendResponse({ ok: true, ...(await deleteWatchtowerMonitor(message.monitorId || "")) });
         return;
       }
       case "ollama:list-local-work-folder-directory": {

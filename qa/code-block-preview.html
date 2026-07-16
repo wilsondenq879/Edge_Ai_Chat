@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open Copilot code block preview</title>
+    <link rel="stylesheet" href="../src/injected.css" />
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+        background: #0d1119;
+      }
+
+      body {
+        padding: 42px 52px;
+      }
+
+      #ollama-quick-chat-host {
+        display: block;
+        position: static;
+        width: 100%;
+        transform: none;
+      }
+
+      #ollama-quick-chat-host .ollama-quick-message {
+        width: 100%;
+        padding: 26px;
+        border: 1px solid rgba(126, 233, 255, 0.08);
+        border-radius: 24px;
+      }
+
+      #ollama-quick-chat-host .ollama-quick-message-body {
+        font-size: 18px;
+      }
+
+      #ollama-quick-chat-host .rendered-markdown pre {
+        padding: 24px;
+      }
+
+      #ollama-quick-chat-host .rendered-markdown pre code {
+        font-size: 16px;
+        line-height: 1.72;
+        white-space: pre;
+      }
+
+      @media (max-width: 520px) {
+        body { padding: 16px; }
+        #ollama-quick-chat-host .ollama-quick-message { padding: 16px; }
+        #ollama-quick-chat-host .rendered-markdown pre { padding: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ollama-quick-chat-host" data-chat-font-size="large">
+      <article class="ollama-quick-message is-assistant">
+        <div class="ollama-quick-message-body rendered-markdown">
+          <p>請將原有的文件複製邏輯改成較有錯誤處理的結構。</p>
+          <div class="ollama-quick-code-block">
+            <div class="ollama-quick-code-block-top">
+              <span class="ollama-quick-code-block-language">javascript</span>
+              <div class="ollama-quick-code-block-actions">
+                <button class="ollama-quick-copy ollama-quick-code-copy" type="button" data-action="copy-code-block" aria-label="複製程式碼">複製程式碼</button>
+              </div>
+            </div>
+            <pre><code>// ... 上述代碼保持不變...
+
+const changedFiles = [];
+let page = 1;
+
+try {
+  while (true) {
+    const filesResp = await github.rest.pulls.listFiles({
+      owner,
+      repo,
+      pull_number: issue_number,
+      per_page: 100,
+      page: page
+    });
+
+    changedFiles.push(
+      ...filesResp.data.map(f =&gt; ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch || ""
+      }))
+    );
+
+    // 檢查是否有足夠的資料，如果少於 100 個，表示這是最後一頁。
+    if (filesResp.data.length &lt; 100) {
+      break;
+    }
+
+    page += 1;
+  }
+} catch (error) {
+  console.error("Error fetching pull request files during pagination:", error);
+}
+
+// ... 後續代碼繼續使用 changedFiles 變數...</code></pre>
+          </div>
+        </div>
+      </article>
+    </div>
+    <script>
+      const previewParams = new URLSearchParams(window.location.search);
+      if (previewParams.get("theme") === "light") {
+        document.querySelector("#ollama-quick-chat-host")?.setAttribute("data-theme", "light");
+        document.documentElement.style.background = "#eef4f8";
+        document.body.style.background = "#eef4f8";
+      }
+
+      const previewWidth = Number.parseInt(previewParams.get("width") || "", 10);
+      if (Number.isFinite(previewWidth) && previewWidth > 280) {
+        document.querySelector("#ollama-quick-chat-host").style.width = `${previewWidth}px`;
+      }
+
+      document.addEventListener("click", async (event) => {
+        const button = event.target.closest('[data-action="copy-code-block"]');
+        if (!button) return;
+        const code = button.closest(".ollama-quick-code-block")?.querySelector("pre code");
+        try {
+          await navigator.clipboard.writeText(code?.textContent || "");
+          button.textContent = "已複製";
+          button.setAttribute("aria-label", "已複製");
+          button.classList.add("is-copied");
+          window.setTimeout(() => {
+            button.textContent = "複製程式碼";
+            button.setAttribute("aria-label", "複製程式碼");
+            button.classList.remove("is-copied");
+          }, 1600);
+        } catch (error) {
+          button.textContent = "複製失敗";
+        }
+      });
+    </script>
+  </body>
+</html>

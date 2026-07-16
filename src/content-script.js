@@ -386,6 +386,14 @@ let pendingSuggestedStarterAction = null;
 let activeSearchCompositionRole = "";
 let confirmDialogState = null;
 let evidenceHighlightTimer = 0;
+let watchtowerPanelOpen = false;
+let watchtowerMonitors = [];
+let watchtowerEvents = [];
+let watchtowerBusy = false;
+let watchtowerDraft = {
+  condition: "",
+  intervalMinutes: 60,
+};
 const PERSPECTIVE_PREVIEW_LENGTH = 180;
 const HTML_LAYOUT_GUARD_STYLE_ID = "edge-ai-chat-layout-guard";
 const HTML_MERMAID_RUNTIME_SCRIPT_ID = "edge-ai-chat-mermaid-runtime";
@@ -1212,6 +1220,9 @@ const CONTENT_I18N = {
     chatCleared: "對話已清除。",
     messageNotFound: "找不到訊息。",
     copiedResponse: "已複製助理回覆。",
+    copyCode: "複製程式碼",
+    codeCopied: "已複製",
+    copiedCode: "已複製程式碼。",
     shareOpened: "已開啟分享。",
     shareFallbackEmailOpened: "這個瀏覽器暫時無法叫出原生分享，已改用 Email 分享。",
     shareFailed: "分享失敗。",
@@ -1364,6 +1375,51 @@ const CONTENT_I18N = {
     evidenceJumpToSource: "跳到原文",
     evidenceLocated: "已跳到證據 {id}。",
     evidenceNotFound: "目前頁面找不到證據 {id}；頁面內容可能已變更。",
+    watchtowerOpen: "Watchtower 網頁監控",
+    watchtowerTitle: "Watchtower",
+    watchtowerKicker: "網頁監控代理",
+    watchtowerCurrentPage: "目前頁面",
+    watchtowerAllMonitors: "所有監控",
+    watchtowerConditionLabel: "觀察條件（選填）",
+    watchtowerConditionPlaceholder: "例如：價格低於 10,000 元、出現新職缺，或公告內容改變",
+    watchtowerConditionHint: "有條件時，變更會先交給目前模型判斷；留白則通知所有內容變更。",
+    watchtowerIntervalLabel: "檢查頻率",
+    watchtowerInterval15m: "每 15 分鐘",
+    watchtowerInterval30m: "每 30 分鐘",
+    watchtowerInterval1h: "每小時",
+    watchtowerInterval6h: "每 6 小時",
+    watchtowerInterval1d: "每天",
+    watchtowerStart: "開始監控",
+    watchtowerUpdate: "更新監控",
+    watchtowerClose: "關閉",
+    watchtowerCheckNow: "立即檢查",
+    watchtowerPause: "暫停",
+    watchtowerResume: "恢復",
+    watchtowerDelete: "刪除",
+    watchtowerOpenSource: "開啟頁面",
+    watchtowerMonitoring: "監控中",
+    watchtowerPaused: "已暫停",
+    watchtowerNoMonitors: "尚未建立任何監控。",
+    watchtowerNeverChecked: "尚未檢查",
+    watchtowerLastChecked: "上次檢查：{time}",
+    watchtowerChangeCount: "已偵測 {count} 次變更",
+    watchtowerStatusPending: "等待基準",
+    watchtowerStatusBaseline: "已建立基準",
+    watchtowerStatusUnchanged: "沒有變更",
+    watchtowerStatusChanged: "偵測到變更",
+    watchtowerStatusIgnored: "變更不符合條件",
+    watchtowerStatusError: "檢查失敗",
+    watchtowerLoading: "正在載入 Watchtower...",
+    watchtowerSaving: "正在建立監控基準...",
+    watchtowerChecking: "Watchtower 正在檢查頁面...",
+    watchtowerSaved: "Watchtower 已開始監控這個頁面。",
+    watchtowerUpdated: "Watchtower 監控已更新。",
+    watchtowerDeleted: "Watchtower 監控已刪除。",
+    watchtowerPausedStatus: "Watchtower 監控已暫停。",
+    watchtowerResumedStatus: "Watchtower 監控已恢復。",
+    watchtowerCheckDone: "Watchtower 檢查完成。",
+    watchtowerConfirmDelete: "確定要刪除這個 Watchtower 監控嗎？",
+    watchtowerLoadFailed: "無法載入 Watchtower。",
     includeRepoOrFile: "加入Github資料",
     changeIncludedSource: "更換來源",
     clearIncludedSource: "清除來源",
@@ -1899,6 +1955,9 @@ const CONTENT_I18N = {
     chatCleared: "Chat cleared.",
     messageNotFound: "Message not found.",
     copiedResponse: "Copied assistant response.",
+    copyCode: "Copy code",
+    codeCopied: "Copied",
+    copiedCode: "Code copied.",
     shareOpened: "Opened share sheet.",
     shareFallbackEmailOpened: "Native sharing is unavailable here, so an email share draft was opened instead.",
     shareFailed: "Share failed.",
@@ -2066,6 +2125,51 @@ const CONTENT_I18N = {
     evidenceJumpToSource: "Jump to source",
     evidenceLocated: "Jumped to evidence {id}.",
     evidenceNotFound: "Evidence {id} is no longer visible on this page; the page may have changed.",
+    watchtowerOpen: "Watchtower webpage monitoring",
+    watchtowerTitle: "Watchtower",
+    watchtowerKicker: "Web monitoring agent",
+    watchtowerCurrentPage: "Current page",
+    watchtowerAllMonitors: "All monitors",
+    watchtowerConditionLabel: "Observation condition (optional)",
+    watchtowerConditionPlaceholder: "For example: price drops below $100, a new role appears, or an announcement changes",
+    watchtowerConditionHint: "With a condition, the current model judges each change first. Leave blank to notify on every content change.",
+    watchtowerIntervalLabel: "Check frequency",
+    watchtowerInterval15m: "Every 15 minutes",
+    watchtowerInterval30m: "Every 30 minutes",
+    watchtowerInterval1h: "Hourly",
+    watchtowerInterval6h: "Every 6 hours",
+    watchtowerInterval1d: "Daily",
+    watchtowerStart: "Start monitoring",
+    watchtowerUpdate: "Update monitor",
+    watchtowerClose: "Close",
+    watchtowerCheckNow: "Check now",
+    watchtowerPause: "Pause",
+    watchtowerResume: "Resume",
+    watchtowerDelete: "Delete",
+    watchtowerOpenSource: "Open page",
+    watchtowerMonitoring: "Monitoring",
+    watchtowerPaused: "Paused",
+    watchtowerNoMonitors: "No monitors yet.",
+    watchtowerNeverChecked: "Not checked yet",
+    watchtowerLastChecked: "Last checked: {time}",
+    watchtowerChangeCount: "{count} change(s) detected",
+    watchtowerStatusPending: "Waiting for baseline",
+    watchtowerStatusBaseline: "Baseline captured",
+    watchtowerStatusUnchanged: "No change",
+    watchtowerStatusChanged: "Change detected",
+    watchtowerStatusIgnored: "Change did not match condition",
+    watchtowerStatusError: "Check failed",
+    watchtowerLoading: "Loading Watchtower...",
+    watchtowerSaving: "Capturing the monitoring baseline...",
+    watchtowerChecking: "Watchtower is checking the page...",
+    watchtowerSaved: "Watchtower is now monitoring this page.",
+    watchtowerUpdated: "Watchtower monitor updated.",
+    watchtowerDeleted: "Watchtower monitor deleted.",
+    watchtowerPausedStatus: "Watchtower monitor paused.",
+    watchtowerResumedStatus: "Watchtower monitor resumed.",
+    watchtowerCheckDone: "Watchtower check complete.",
+    watchtowerConfirmDelete: "Delete this Watchtower monitor?",
+    watchtowerLoadFailed: "Could not load Watchtower.",
     includeRepoOrFile: "Add source",
     changeIncludedSource: "Change source",
     clearIncludedSource: "Clear source",
@@ -11324,7 +11428,8 @@ function renderMarkdown(markdown, options = {}) {
     const languageBadge = block.language
       ? `<span class="ollama-quick-code-block-language">${escapeHtml(block.language)}</span>`
       : "";
-    const copyButton = starterDrafts.length
+    const copyCodeButton = `<button class="ollama-quick-copy ollama-quick-code-copy" type="button" data-action="copy-code-block" aria-label="${escapeHtml(tl("copyCode"))}">${escapeHtml(tl("copyCode"))}</button>`;
+    const copyStarterButton = starterDrafts.length
       ? `<button class="ollama-quick-copy" type="button" data-action="copy-generated-starter-code-block-json" data-message-id="${escapeHtml(messageId)}" data-code-block-index="${index}">${escapeHtml(tl("copyStarterJson"))}</button>`
       : "";
     const saveButton = starterDrafts.length
@@ -11338,7 +11443,7 @@ function renderMarkdown(markdown, options = {}) {
     const codeMarkup = `
       <div class="ollama-quick-code-block">
         ${importHint}
-        ${(languageBadge || copyButton || saveButton) ? `<div class="ollama-quick-code-block-top">${languageBadge}<div class="ollama-quick-code-block-actions">${copyButton}${saveButton}</div></div>` : ""}
+        <div class="ollama-quick-code-block-top">${languageBadge}<div class="ollama-quick-code-block-actions">${copyCodeButton}${copyStarterButton}${saveButton}</div></div>
         <pre><code>${escapeHtml(block.code)}</code></pre>
       </div>
     `;
@@ -17308,6 +17413,168 @@ function renderPanelViewModeSwitch(currentMode) {
   `;
 }
 
+function normalizeWatchtowerClientUrl(value = window.location.href) {
+  try {
+    const parsed = new URL(String(value || ""), window.location.href);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+    parsed.hash = "";
+    return parsed.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getCurrentWatchtowerMonitor() {
+  const currentUrl = normalizeWatchtowerClientUrl();
+  return watchtowerMonitors.find((monitor) => normalizeWatchtowerClientUrl(monitor?.url || "") === currentUrl) || null;
+}
+
+function applyWatchtowerState(payload = {}) {
+  if (Array.isArray(payload.monitors)) {
+    watchtowerMonitors = payload.monitors;
+  }
+  if (Array.isArray(payload.events)) {
+    watchtowerEvents = payload.events;
+  }
+}
+
+async function loadWatchtowerState() {
+  const result = await runtimeMessage({ type: "watchtower:list" });
+  if (!result?.ok) {
+    throw new Error(result?.error || tl("watchtowerLoadFailed"));
+  }
+  applyWatchtowerState(result);
+  return result;
+}
+
+function resetWatchtowerDraftFromCurrentMonitor() {
+  const monitor = getCurrentWatchtowerMonitor();
+  watchtowerDraft = {
+    condition: String(monitor?.condition || ""),
+    intervalMinutes: Number.parseInt(String(monitor?.intervalMinutes || 60), 10) || 60,
+  };
+}
+
+function formatWatchtowerTimestamp(value) {
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) {
+    return tl("watchtowerNeverChecked");
+  }
+  try {
+    return new Intl.DateTimeFormat(getUiLanguage(), {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(new Date(timestamp));
+  } catch (_error) {
+    return new Date(timestamp).toLocaleString();
+  }
+}
+
+function getWatchtowerStatusLabel(status) {
+  const statusKey = {
+    baseline: "watchtowerStatusBaseline",
+    unchanged: "watchtowerStatusUnchanged",
+    changed: "watchtowerStatusChanged",
+    ignored: "watchtowerStatusIgnored",
+    error: "watchtowerStatusError",
+  }[String(status || "").trim().toLowerCase()] || "watchtowerStatusPending";
+  return tl(statusKey);
+}
+
+function getWatchtowerStatusClass(status) {
+  const normalized = String(status || "pending").trim().toLowerCase();
+  return ["changed", "ignored", "error", "baseline", "unchanged"].includes(normalized) ? normalized : "pending";
+}
+
+function renderWatchtowerMonitorCard(monitor) {
+  const statusClass = getWatchtowerStatusClass(monitor?.lastCheckStatus);
+  const summary = monitor?.lastError || monitor?.lastSummary || "";
+  return `
+    <article class="ollama-quick-watchtower-monitor ${monitor?.enabled ? "is-enabled" : "is-paused"}" data-watchtower-monitor-id="${escapeHtml(monitor?.id || "")}">
+      <div class="ollama-quick-watchtower-monitor-top">
+        <div class="ollama-quick-watchtower-monitor-copy">
+          <div class="ollama-quick-watchtower-monitor-title">${escapeHtml(monitor?.title || monitor?.url || tl("watchtowerTitle"))}</div>
+          <div class="ollama-quick-watchtower-monitor-url">${escapeHtml(monitor?.url || "")}</div>
+        </div>
+        <span class="ollama-quick-watchtower-state ${monitor?.enabled ? "is-enabled" : "is-paused"}">${escapeHtml(tl(monitor?.enabled ? "watchtowerMonitoring" : "watchtowerPaused"))}</span>
+      </div>
+      <div class="ollama-quick-watchtower-monitor-meta">
+        <span class="ollama-quick-watchtower-check-status is-${escapeHtml(statusClass)}">${escapeHtml(getWatchtowerStatusLabel(monitor?.lastCheckStatus))}</span>
+        <span>${escapeHtml(tl("watchtowerLastChecked", { time: formatWatchtowerTimestamp(monitor?.lastCheckedAt) }))}</span>
+        <span>${escapeHtml(tl("watchtowerChangeCount", { count: monitor?.changeCount || 0 }))}</span>
+      </div>
+      ${monitor?.condition ? `<div class="ollama-quick-watchtower-condition">${escapeHtml(monitor.condition)}</div>` : ""}
+      ${summary ? `<div class="ollama-quick-watchtower-summary">${escapeHtml(summary)}</div>` : ""}
+      <div class="ollama-quick-watchtower-monitor-actions">
+        <button class="ollama-quick-secondary" type="button" data-action="watchtower-check-now" data-monitor-id="${escapeHtml(monitor?.id || "")}" ${watchtowerBusy ? "disabled" : ""}>${escapeHtml(tl("watchtowerCheckNow"))}</button>
+        <button class="ollama-quick-secondary" type="button" data-action="watchtower-toggle-monitor" data-monitor-id="${escapeHtml(monitor?.id || "")}" data-monitor-enabled="${String(monitor?.enabled !== false)}" ${watchtowerBusy ? "disabled" : ""}>${escapeHtml(tl(monitor?.enabled ? "watchtowerPause" : "watchtowerResume"))}</button>
+        <button class="ollama-quick-secondary" type="button" data-action="watchtower-open-source" data-monitor-id="${escapeHtml(monitor?.id || "")}">${escapeHtml(tl("watchtowerOpenSource"))}</button>
+        <button class="ollama-quick-icon-button ollama-quick-danger-icon-button" type="button" data-action="watchtower-delete-monitor" data-monitor-id="${escapeHtml(monitor?.id || "")}" aria-label="${escapeHtml(tl("watchtowerDelete"))}" title="${escapeHtml(tl("watchtowerDelete"))}" ${watchtowerBusy ? "disabled" : ""}>×</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderWatchtowerPanel() {
+  if (!watchtowerPanelOpen) {
+    return "";
+  }
+  const currentMonitor = getCurrentWatchtowerMonitor();
+  const intervalOptions = [
+    [15, "watchtowerInterval15m"],
+    [30, "watchtowerInterval30m"],
+    [60, "watchtowerInterval1h"],
+    [360, "watchtowerInterval6h"],
+    [1440, "watchtowerInterval1d"],
+  ].map(([value, labelKey]) => `<option value="${value}" ${Number(watchtowerDraft.intervalMinutes) === value ? "selected" : ""}>${escapeHtml(tl(labelKey))}</option>`).join("");
+  const allMonitors = watchtowerMonitors.length
+    ? watchtowerMonitors.map((monitor) => renderWatchtowerMonitorCard(monitor)).join("")
+    : `<div class="ollama-quick-watchtower-empty">${escapeHtml(tl("watchtowerNoMonitors"))}</div>`;
+
+  return `
+    <div class="ollama-quick-picker-backdrop ollama-quick-watchtower-backdrop">
+      <section class="ollama-quick-picker-modal ollama-quick-watchtower-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(tl("watchtowerOpen"))}">
+        <div class="ollama-quick-picker-headline is-simple">
+          <div>
+            <div class="ollama-quick-picker-kicker">${escapeHtml(tl("watchtowerKicker"))}</div>
+            <div class="ollama-quick-picker-title">${escapeHtml(tl("watchtowerTitle"))}</div>
+          </div>
+          <button class="ollama-quick-icon-button" type="button" data-action="close-watchtower" aria-label="${escapeHtml(tl("watchtowerClose"))}">×</button>
+        </div>
+        <div class="ollama-quick-watchtower-body">
+          <section class="ollama-quick-watchtower-create">
+            <div class="ollama-quick-watchtower-section-title">${escapeHtml(tl("watchtowerCurrentPage"))}</div>
+            <div class="ollama-quick-watchtower-page">
+              <div class="ollama-quick-watchtower-page-title">${escapeHtml(document.title || window.location.href)}</div>
+              <div class="ollama-quick-watchtower-monitor-url">${escapeHtml(normalizeWatchtowerClientUrl())}</div>
+            </div>
+            <label class="ollama-quick-custom-starter-field">
+              <span>${escapeHtml(tl("watchtowerConditionLabel"))}</span>
+              <textarea class="ollama-quick-custom-starter-textarea ollama-quick-watchtower-textarea" data-role="watchtower-condition" placeholder="${escapeHtml(tl("watchtowerConditionPlaceholder"))}" ${watchtowerBusy ? "disabled" : ""}>${escapeHtml(watchtowerDraft.condition || "")}</textarea>
+              <small>${escapeHtml(tl("watchtowerConditionHint"))}</small>
+            </label>
+            <label class="ollama-quick-custom-starter-field">
+              <span>${escapeHtml(tl("watchtowerIntervalLabel"))}</span>
+              <select class="ollama-quick-select" data-role="watchtower-interval" ${watchtowerBusy ? "disabled" : ""}>${intervalOptions}</select>
+            </label>
+            <button class="ollama-quick-primary ollama-quick-watchtower-save" type="button" data-action="watchtower-save-current" ${watchtowerBusy ? "disabled" : ""}>${escapeHtml(tl(currentMonitor ? "watchtowerUpdate" : "watchtowerStart"))}</button>
+          </section>
+          <section class="ollama-quick-watchtower-list">
+            <div class="ollama-quick-watchtower-section-title">${escapeHtml(tl("watchtowerAllMonitors"))}</div>
+            <div class="ollama-quick-watchtower-stack">${allMonitors}</div>
+          </section>
+        </div>
+        <div class="ollama-quick-picker-footer">
+          <span class="ollama-quick-watchtower-busy">${watchtowerBusy ? escapeHtml(tl("watchtowerChecking")) : ""}</span>
+          <button class="ollama-quick-secondary" type="button" data-action="close-watchtower">${escapeHtml(tl("watchtowerClose"))}</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderShell() {
   const host = ensureHost();
   const existingPrompt = host.querySelector("[data-role='prompt']");
@@ -17339,6 +17606,8 @@ function renderShell() {
   const starterHoverTipsEnabled = currentConfig?.starterHoverTipsEnabled !== false;
   const teamsInlineActionEnabled = currentConfig?.teamsInlineActionEnabled !== false;
   const evidenceModeEnabled = currentConfig?.evidenceModeEnabled === true;
+  const currentWatchtowerMonitor = getCurrentWatchtowerMonitor();
+  const watchtowerNeedsAttention = ["changed", "error"].includes(String(currentWatchtowerMonitor?.lastCheckStatus || ""));
   const pageContextControlLabel = hasConversationStarted() ? tl("contextLabelAfter") : tl("contextLabelBefore");
   const modelSelectionMode = getModelSelectionMode();
   const provider = getDefaultProvider();
@@ -17390,6 +17659,17 @@ function renderShell() {
               aria-pressed="${canDetachTaskRail ? String(showDetachedTaskRail) : "false"}"
             >☰${canExtractTaskCandidates ? `<span class="ollama-quick-icon-badge" aria-hidden="true"></span>` : ""}</button>
           ` : ""}
+          <button
+            class="ollama-quick-icon-button ollama-quick-watchtower-button ${currentWatchtowerMonitor?.enabled ? "is-active" : ""} ${watchtowerNeedsAttention ? "has-notice" : ""}"
+            type="button"
+            data-action="open-watchtower"
+            title="${escapeHtml(tl("watchtowerOpen"))}"
+            aria-label="${escapeHtml(tl("watchtowerOpen"))}"
+            aria-pressed="${String(currentWatchtowerMonitor?.enabled === true)}"
+          >
+            <span class="ollama-quick-icon-glyph" aria-hidden="true">W</span>
+            ${watchtowerNeedsAttention ? `<span class="ollama-quick-icon-badge ollama-quick-watchtower-badge" aria-hidden="true"></span>` : ""}
+          </button>
           <button
             class="ollama-quick-icon-button ollama-quick-header-utility ${starterHoverTipsEnabled ? "is-active" : ""}"
             type="button"
@@ -17605,6 +17885,7 @@ function renderShell() {
       ${renderCustomStarterBuilder()}
       ${renderAgentFlowBuilder()}
       ${renderBatchUrlQaBuilder()}
+      ${renderWatchtowerPanel()}
       ${renderConfirmDialog()}
       </section>
     </div>
@@ -19647,6 +19928,149 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "open-watchtower") {
+    watchtowerPanelOpen = true;
+    watchtowerBusy = true;
+    renderShell();
+    setStatus(tl("watchtowerLoading"));
+    try {
+      await loadWatchtowerState();
+      resetWatchtowerDraftFromCurrentMonitor();
+      setStatus(getProviderModelStatusText());
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : tl("watchtowerLoadFailed"));
+    } finally {
+      watchtowerBusy = false;
+      renderShell();
+    }
+    return;
+  }
+
+  if (action === "close-watchtower") {
+    watchtowerPanelOpen = false;
+    watchtowerBusy = false;
+    renderShell();
+    return;
+  }
+
+  if (action === "watchtower-save-current") {
+    const existingMonitor = getCurrentWatchtowerMonitor();
+    watchtowerBusy = true;
+    renderShell();
+    setStatus(tl("watchtowerSaving"));
+    try {
+      const result = await runtimeMessage({
+        type: "watchtower:save",
+        monitor: {
+          id: existingMonitor?.id || "",
+          url: normalizeWatchtowerClientUrl(),
+          title: document.title || window.location.href,
+          condition: watchtowerDraft.condition,
+          intervalMinutes: watchtowerDraft.intervalMinutes,
+          enabled: true,
+        },
+      });
+      if (!result?.ok) {
+        throw new Error(result?.error || tl("watchtowerLoadFailed"));
+      }
+      applyWatchtowerState(result);
+      resetWatchtowerDraftFromCurrentMonitor();
+      setStatus(tl(existingMonitor ? "watchtowerUpdated" : "watchtowerSaved"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      watchtowerBusy = false;
+      renderShell();
+    }
+    return;
+  }
+
+  if (action === "watchtower-check-now") {
+    const monitorId = actionNode.dataset.monitorId || "";
+    if (!monitorId) {
+      return;
+    }
+    watchtowerBusy = true;
+    renderShell();
+    setStatus(tl("watchtowerChecking"));
+    try {
+      const result = await runtimeMessage({ type: "watchtower:check-now", monitorId });
+      if (!result?.ok) {
+        throw new Error(result?.error || tl("watchtowerLoadFailed"));
+      }
+      applyWatchtowerState(result);
+      resetWatchtowerDraftFromCurrentMonitor();
+      setStatus(result.check?.error || tl("watchtowerCheckDone"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      watchtowerBusy = false;
+      renderShell();
+    }
+    return;
+  }
+
+  if (action === "watchtower-toggle-monitor") {
+    const monitorId = actionNode.dataset.monitorId || "";
+    const wasEnabled = actionNode.dataset.monitorEnabled === "true";
+    if (!monitorId) {
+      return;
+    }
+    watchtowerBusy = true;
+    renderShell();
+    try {
+      const result = await runtimeMessage({
+        type: "watchtower:set-enabled",
+        monitorId,
+        enabled: !wasEnabled,
+      });
+      if (!result?.ok) {
+        throw new Error(result?.error || tl("watchtowerLoadFailed"));
+      }
+      applyWatchtowerState(result);
+      resetWatchtowerDraftFromCurrentMonitor();
+      setStatus(tl(wasEnabled ? "watchtowerPausedStatus" : "watchtowerResumedStatus"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      watchtowerBusy = false;
+      renderShell();
+    }
+    return;
+  }
+
+  if (action === "watchtower-delete-monitor") {
+    const monitorId = actionNode.dataset.monitorId || "";
+    if (!monitorId || !(await requestConfirmation(tl("watchtowerConfirmDelete"), { confirmLabel: tl("watchtowerDelete") }))) {
+      return;
+    }
+    watchtowerBusy = true;
+    renderShell();
+    try {
+      const result = await runtimeMessage({ type: "watchtower:delete", monitorId });
+      if (!result?.ok) {
+        throw new Error(result?.error || tl("watchtowerLoadFailed"));
+      }
+      applyWatchtowerState(result);
+      resetWatchtowerDraftFromCurrentMonitor();
+      setStatus(tl("watchtowerDeleted"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      watchtowerBusy = false;
+      renderShell();
+    }
+    return;
+  }
+
+  if (action === "watchtower-open-source") {
+    const monitor = watchtowerMonitors.find((item) => String(item.id) === String(actionNode.dataset.monitorId || ""));
+    if (monitor?.url) {
+      window.open(monitor.url, "_blank", "noopener,noreferrer");
+    }
+    return;
+  }
+
   if (action === "reveal-evidence") {
     const article = actionNode.closest(".ollama-quick-message[data-message-id]");
     const panel = actionNode.closest("[data-evidence-message-id]");
@@ -21048,6 +21472,33 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "copy-code-block") {
+    const codeNode = actionNode.closest(".ollama-quick-code-block")?.querySelector("pre code");
+    if (!(codeNode instanceof HTMLElement)) {
+      setStatus(tl("messageNotFound"));
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(codeNode.textContent || "");
+      actionNode.textContent = tl("codeCopied");
+      actionNode.setAttribute("aria-label", tl("codeCopied"));
+      actionNode.classList.add("is-copied");
+      window.setTimeout(() => {
+        if (!actionNode.isConnected) {
+          return;
+        }
+        actionNode.textContent = tl("copyCode");
+        actionNode.setAttribute("aria-label", tl("copyCode"));
+        actionNode.classList.remove("is-copied");
+      }, 1600);
+      setStatus(tl("copiedCode"));
+    } catch {
+      setStatus(tl("copyFailed"));
+    }
+    return;
+  }
+
   if (action === "share-message") {
     const messageId = actionNode.dataset.messageId || "";
     const message = chatMessages.find((item) => String(item.id) === String(messageId));
@@ -21075,6 +21526,11 @@ async function handleClick(event) {
 
 async function handleChange(event) {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.dataset.role === "watchtower-interval") {
+    watchtowerDraft.intervalMinutes = Number.parseInt(target.value, 10) || 60;
+    return;
+  }
+
   if (target instanceof HTMLSelectElement && target.dataset.role === "model-select") {
     if (!providerSupportsInPageModelSelection()) {
       setStatus(getProviderModelStatusText());
@@ -21216,6 +21672,11 @@ function handleInput(event) {
       activeSearchCompositionRole = "";
     }
   };
+  if (target instanceof HTMLTextAreaElement && target.dataset.role === "watchtower-condition") {
+    watchtowerDraft.condition = target.value;
+    return;
+  }
+
   if (target instanceof HTMLTextAreaElement && target.dataset.role === "custom-starter-purpose") {
     ensureCustomStarterBuilderDraft().purpose = target.value;
     return;
@@ -22016,6 +22477,7 @@ async function bootstrap() {
     }
     await loadModels();
     await loadSavedTaskReminders().catch(() => {});
+    await loadWatchtowerState().catch(() => {});
     await loadLauncherPosition();
     await loadPanelViewMode();
     await loadSplitPaneWidth();
@@ -22034,6 +22496,17 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   if (areaName === "local" && changes.taskReminderItems) {
     loadSavedTaskReminders()
+      .then(() => {
+        if (document.getElementById(HOST_ID)) {
+          renderShell();
+        }
+      })
+      .catch(() => {});
+    return;
+  }
+
+  if (areaName === "local" && (changes.watchtowerMonitorsV1 || changes.watchtowerEventsV1)) {
+    loadWatchtowerState()
       .then(() => {
         if (document.getElementById(HOST_ID)) {
           renderShell();

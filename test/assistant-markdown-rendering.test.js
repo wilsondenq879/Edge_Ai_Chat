@@ -31,6 +31,7 @@ const context = {
     evidenceUnverified: "無法在來源快照驗證",
     evidenceMissing: "沒有可驗證引文",
     evidenceSourceCurrentPage: "目前頁面",
+    copyCode: "Copy code",
   }[key] || key).replace(/\{(\w+)\}/g, (_match, name) => String(vars[name] ?? "")),
 };
 vm.createContext(context);
@@ -94,6 +95,15 @@ const realCode = [
   "```",
 ].join("\n");
 assert.equal(context.testApi.normalizeAssistantMarkdownForDisplay(realCode), realCode);
+const renderedRealCode = context.testApi.renderAssistantMarkdown(realCode, { messageId: "code-message" });
+assert.ok(renderedRealCode.includes('data-action="copy-code-block"'));
+assert.ok(renderedRealCode.includes("ollama-quick-code-copy"));
+assert.ok(renderedRealCode.includes("Copy code"));
+assert.ok(renderedRealCode.includes("<pre><code>"));
+assert.match(
+  source,
+  /if \(action === "copy-code-block"\)[\s\S]*?navigator\.clipboard\.writeText\(codeNode\.textContent \|\| ""\)/,
+);
 
 const documentedPython = [
   "```python",

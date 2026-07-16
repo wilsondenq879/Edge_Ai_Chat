@@ -203,6 +203,46 @@ type TaskReminder = {
 };
 ```
 
+## Watchtower Contract
+
+```ts
+type WatchtowerMonitor = {
+  id: string;
+  url: string;
+  title: string;
+  condition: string;
+  intervalMinutes: number;
+  enabled: boolean;
+  contentHash: string;      // background storage only
+  baselineText: string;     // background storage only
+  createdAt: string;
+  updatedAt: string;
+  lastCheckedAt: string;
+  lastChangedAt: string;
+  lastCheckStatus: "pending" | "baseline" | "unchanged" | "changed" | "ignored" | "error";
+  lastDecision: string;
+  lastSummary: string;
+  lastError: string;
+  changeCount: number;
+};
+
+type WatchtowerEvent = {
+  id: string;
+  monitorId: string;
+  url: string;
+  title: string;
+  condition: string;
+  detectedAt: string;
+  relevant: boolean;
+  summary: string;
+  addedCount: number;
+  removedCount: number;
+  evaluationError: string;
+};
+```
+
+`watchtower:list`、`watchtower:save`、`watchtower:set-enabled`、`watchtower:check-now` 與 `watchtower:delete` 是 content-script 與 background 的主要 message contract。回傳 UI 的 monitor 不包含 `contentHash` 與 `baselineText`。
+
 ## Chat Session Contract
 
 這是目前產品非常關鍵的儲存單位，至少要保留這些欄位：
@@ -227,6 +267,8 @@ type ChatSession = {
 | --- | --- |
 | `latestChatSession` | 最近一份聊天 session |
 | `taskReminderItems` | 已儲存 task reminders |
+| `watchtowerMonitorsV1` | Watchtower monitors、排程狀態與頁面 baseline |
+| `watchtowerEventsV1` | 最近的 Watchtower 變更判斷事件 |
 | `batchUrlQaJobs` | 最近的 Batch URL QA jobs 與執行進度 |
 | `googleDriveSyncMeta` | Drive 連線與同步狀態 |
 | `googleDriveSyncDocuments` | Drive sync documents |
